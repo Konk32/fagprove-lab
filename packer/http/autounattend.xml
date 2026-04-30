@@ -1,0 +1,257 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+=============================================================================
+autounattend.xml — Windows Server 2022 unattended install
+=============================================================================
+Plasseres pa virtuell floppy av Packer (floppy_files i .pkr.hcl).
+Windows Setup leser den automatisk og bruker den til a svare pa alle
+sporsmal som ellers krever klikk eller tastetrykk.
+
+GENERELT MONSTER:
+- 'pass' angir nar i installasjonen komponenten brukes
+- 'component' er en spesifikk Windows-komponent som tar imot config
+- Hvert felt har en motpart i Windows System Image Manager (WSIM)
+  hvis du vil utforske dette grafisk
+
+PASSORD:
+- Administrator-passord: 'Packer2024!' — endre i produksjon
+- Dette MA matche winrm_password i Packer-templaten
+
+LISENS:
+- Bruker KMS-key for Windows Server 2022 Standard (offentlig dokumentert)
+- For ekte produksjon: bytt til din MAK eller fjern blokken
+=============================================================================
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+
+    <!--
+    =========================================================================
+    PASS 1: windowsPE
+    =========================================================================
+    Kjorer i Windows Preinstallation Environment, FOR Windows installeres.
+    Her bestemmer vi sprak, tastatur, og hvordan disken skal partisjoneres.
+    =========================================================================
+    -->
+    <settings pass="windowsPE">
+
+        <!-- Sprak/tastatur for SETUP-prosessen (ikke OS-en selv) -->
+        <component name="Microsoft-Windows-International-Core-WinPE"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <SetupUILanguage>
+                <UILanguage>en-US</UILanguage>
+            </SetupUILanguage>
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
+        </component>
+
+        <!--
+        Setup-konfigurasjon: disk-partisjonering, hvilken Windows-edition
+        som skal installeres, og hvor pa disken filene skal.
+        -->
+        <component name="Microsoft-Windows-Setup"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+                <!--
+                Disk-partisjonering. WillWipeDisk=true sletter ALT.
+                Vi lager EN partisjon som tar hele disken (Type=Primary).
+                For UEFI ma man ha EFI/MSR/Primary trio — denne config-en
+                er BIOS/Legacy. Vi gar UEFI senere hvis behov.
+                -->
+                <DiskConfiguration>
+                    <Disk wcm:action="add">
+                        <CreatePartitions>
+                            <CreatePartition wcm:action="add">
+                                <Order>1</Order>
+                                <Type>Primary</Type>
+                                <Extend>true</Extend>
+                            </CreatePartition>
+                        </CreatePartitions>
+                        <ModifyPartitions>
+                            <ModifyPartition wcm:action="add">
+                                <Order>1</Order>
+                                <PartitionID>1</PartitionID>
+                                <Label>Windows</Label>
+                                <Format>NTFS</Format>
+                                <Active>true</Active>
+                            </ModifyPartition>
+                        </ModifyPartitions>
+                        <DiskID>0</DiskID>
+                        <WillWipeDisk>true</WillWipeDisk>
+                    </Disk>
+                </DiskConfiguration>
+
+                <!--
+                Hvilken edition installeres. Server 2022 ISO inneholder 4 valg:
+                - "Windows Server 2022 SERVERSTANDARDCORE" (Core, ingen GUI)
+                - "Windows Server 2022 SERVERSTANDARD"      (med Desktop Experience)
+                - "Windows Server 2022 SERVERDATACENTERCORE"
+                - "Windows Server 2022 SERVERDATACENTER"
+
+                Vi bruker Standard med GUI for laeringsformal — Core er bedre i
+                produksjon men gjor det vanskeligere a feilsoke for nybegynnere.
+                -->
+                <ImageInstall>
+                    <OSImage>
+                        <InstallFrom>
+                            <MetaData wcm:action="add">
+                                <Key>/IMAGE/NAME</Key>
+                                <Value>Windows Server 2022 SERVERSTANDARD</Value>
+                            </MetaData>
+                        </InstallFrom>
+                        <InstallTo>
+                            <DiskID>0</DiskID>
+                            <PartitionID>1</PartitionID>
+                        </InstallTo>
+                        <WillShowUI>OnError</WillShowUI>
+                    </OSImage>
+                </ImageInstall>
+
+                <!--
+                Lisens-key for Windows Server 2022 Standard.
+                Dette er Microsofts OFFENTLIGE KMS-key — fungerer kun mot KMS-server.
+                For Eval-ISO trengs IKKE key — kommenter ut hele UserData/ProductKey-blokken.
+                For MAK/retail: bytt ut Key-verdien.
+                -->
+                <UserData>
+                    <ProductKey>
+                        <Key>VDYBN-27WPP-V4HQT-9VMD4-VMK7H</Key>
+                        <WillShowUI>OnError</WillShowUI>
+                    </ProductKey>
+                    <AcceptEula>true</AcceptEula>
+                    <FullName>Administrator</FullName>
+                    <Organization>Lab</Organization>
+                </UserData>
+        </component>
+    </settings>
+
+    <!--
+    =========================================================================
+    PASS 2: specialize
+    =========================================================================
+    Kjorer ETTER Windows er installert, FOR forste innlogging.
+    Her setter vi computer name og kjorer init-scripts.
+    =========================================================================
+    -->
+    <settings pass="specialize">
+
+        <!--
+        Computer name. 'packer-base' er en placeholder — vi renamer til
+        ekte hostname (DC01, FS01, etc) under cloning i Fase 3.
+        -->
+        <component name="Microsoft-Windows-Shell-Setup"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <ComputerName>packer-base</ComputerName>
+            <TimeZone>W. Europe Standard Time</TimeZone>
+            <RegisteredOrganization>Lab</RegisteredOrganization>
+            <RegisteredOwner>Administrator</RegisteredOwner>
+        </component>
+    </settings>
+
+    <!--
+    =========================================================================
+    PASS 3: oobeSystem
+    =========================================================================
+    Out-Of-Box Experience — den siste fasen for brukeren ser desktop.
+    Her setter vi admin-passord, aktiverer autologin, og kjorer
+    setup-winrm.ps1 fra floppy-en.
+    =========================================================================
+    -->
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+            <!--
+            OOBE-skjermen som vanligvis spor om wifi, regions-info,
+            personvern osv. Vi skipper alt.
+            -->
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+                <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+                <NetworkLocation>Work</NetworkLocation>
+                <ProtectYourPC>3</ProtectYourPC>
+                <SkipMachineOOBE>true</SkipMachineOOBE>
+                <SkipUserOOBE>true</SkipUserOOBE>
+            </OOBE>
+
+            <!--
+            Sett administrator-passord. MA matche Packer winrm_password.
+            'PlainText=true' er stygt — i produksjon skal dette base64-encodes.
+            For en lab-base-image godtar vi det.
+            -->
+            <UserAccounts>
+                <AdministratorPassword>
+                    <Value>Packer2024!</Value>
+                    <PlainText>true</PlainText>
+                </AdministratorPassword>
+            </UserAccounts>
+
+            <!--
+            Autologin — Windows logger inn som Administrator automatisk
+            etter forste boot. Det lar oss kjore setup-winrm.ps1 uten
+            at noen ma trykke noe. Vi disabler det igjen i sysprep.
+            -->
+            <AutoLogon>
+                <Password>
+                    <Value>Packer2024!</Value>
+                    <PlainText>true</PlainText>
+                </Password>
+                <Enabled>true</Enabled>
+                <Username>Administrator</Username>
+                <LogonCount>2</LogonCount>
+            </AutoLogon>
+
+            <!--
+            FirstLogonCommands kjorer i rekkefolge under forste innlogging.
+            Hver command far en numerisk Order — Windows kjorer dem stigende.
+            -->
+            <FirstLogonCommands>
+
+                <!-- 1. Set network profile to Private (krever for WinRM) -->
+                <SynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <Description>Set network to Private</Description>
+                    <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private"</CommandLine>
+                </SynchronousCommand>
+
+                <!-- 2. Hovedscript som setter opp WinRM (ligger pa floppy A:) -->
+                <SynchronousCommand wcm:action="add">
+                    <Order>2</Order>
+                    <Description>Configure WinRM via floppy script</Description>
+                    <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File a:\setup-winrm.ps1</CommandLine>
+                </SynchronousCommand>
+
+                <!-- 3. Disable Server Manager auto-start (slipper popup vises) -->
+                <SynchronousCommand wcm:action="add">
+                    <Order>3</Order>
+                    <Description>Disable Server Manager auto-start</Description>
+                    <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</CommandLine>
+                </SynchronousCommand>
+
+            </FirstLogonCommands>
+        </component>
+    </settings>
+</unattend>
