@@ -107,7 +107,7 @@ LISENS:
                         <InstallFrom>
                             <MetaData wcm:action="add">
                                 <Key>/IMAGE/NAME</Key>
-                                <Value>Windows Server 2022 SERVERSTANDARD</Value>
+                                <Value>Windows Server 2022 Standard Evaluation (Desktop Experience)</Value>
                             </MetaData>
                         </InstallFrom>
                         <InstallTo>
@@ -125,10 +125,7 @@ LISENS:
                 For MAK/retail: bytt ut Key-verdien.
                 -->
                 <UserData>
-                    <ProductKey>
-                        <Key>VDYBN-27WPP-V4HQT-9VMD4-VMK7H</Key>
-                        <WillShowUI>OnError</WillShowUI>
-                    </ProductKey>
+
                     <AcceptEula>true</AcceptEula>
                     <FullName>Administrator</FullName>
                     <Organization>Lab</Organization>
@@ -204,7 +201,7 @@ LISENS:
             -->
             <UserAccounts>
                 <AdministratorPassword>
-                    <Value>Packer2024!</Value>
+                    <Value>Lab123</Value>
                     <PlainText>true</PlainText>
                 </AdministratorPassword>
             </UserAccounts>
@@ -216,7 +213,7 @@ LISENS:
             -->
             <AutoLogon>
                 <Password>
-                    <Value>Packer2024!</Value>
+                    <Value>Lab123</Value>
                     <PlainText>true</PlainText>
                 </Password>
                 <Enabled>true</Enabled>

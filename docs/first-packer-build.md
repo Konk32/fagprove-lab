@@ -98,7 +98,7 @@ Vanligvis fordi:
 2. Brannmuren blokkerer fortsatt — sjekk `Get-NetFirewallRule -DisplayGroup "Windows Remote Management"`
 3. Nettverksprofilen er Public istedenfor Private
 
-Fix: Apne VM-konsollen, logg inn som Administrator (passord: `Packer2024!`)
+Fix: Apne VM-konsollen, logg inn som Administrator (passord: `Lab123`)
 og se `C:\Windows\Temp\setup-winrm.log`.
 
 ### Boot-loop pa "Press any key..."

@@ -111,8 +111,7 @@ source "vmware-iso" "win2022" {
   shutdown_timeout     = "30m"
 
   # Tools-ISO mounting — Packer monterer windows.iso automatisk her hvis tools_upload_flavor er satt
-  tools_upload_flavor  = "windows"
-  tools_upload_path    = "C:\\Users\\Administrator\\windows.iso"
+  tools_mode = "disable"
 }
 
 # -----------------------------------------------------------------------------
