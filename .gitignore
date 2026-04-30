@@ -1,0 +1,38 @@
+# =============================================================================
+# .gitignore
+# =============================================================================
+# Disse filene/mappene skal ALDRI committes til public repo.
+# =============================================================================
+
+# Packer build-output (VMX/VMDK-filer er store og ikke kildekode)
+packer/output/
+packer/packer_cache/
+packer/*.log
+
+# Variable-filer som inneholder hemmeligheter
+**/*.auto.pkrvars.hcl
+!**/*.auto.pkrvars.hcl.example
+
+# Ansible vault-passord
+.vault_pass
+*.vault_pass
+
+# Lokale environment-overrides
+.env
+.env.local
+
+# ISO-filer (store, lastes ned)
+*.iso
+
+# OS- og editor-filer
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# WSL og Windows mix
+~$*
+
+# Generert inventory (output fra config/lab.yml)
+ansible/inventory/generated/

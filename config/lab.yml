@@ -1,0 +1,128 @@
+# =============================================================================
+# lab.yml — Sentral konfigurasjon for hele lab-miljoet
+# =============================================================================
+# Dette er den ene filen du tilpasser. Alt annet i repoet leser herfra.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Domene
+# -----------------------------------------------------------------------------
+domain:
+  fqdn: hv.lab.local                # Full DNS-navn for domenet
+  netbios: HVLAB                    # NetBIOS-navn (15 tegn maks, store bokstaver)
+  safe_mode_password: ChangeMe!2024 # DSRM-passord — bytt FOR Helvete
+
+# -----------------------------------------------------------------------------
+# Nettverk
+# -----------------------------------------------------------------------------
+# Alle VM-er kobles til dette VMware Workstation LAN-segmentet.
+# Du må opprette segmentet manuelt en gang i Virtual Network Editor.
+# Se docs/network-setup.md for detaljer.
+network:
+  lan_segment: lab-fagprove
+  subnet: 10.50.0.0/24
+  gateway: 10.50.0.1                # pfSense/router-VM hvis du har det
+  dns_servers:
+    - 10.50.0.10                    # DC01 (selv-referanse)
+
+# -----------------------------------------------------------------------------
+# DHCP
+# -----------------------------------------------------------------------------
+dhcp:
+  scope_name: "Lab-Klienter"
+  start_range: 10.50.0.100
+  end_range: 10.50.0.200
+  subnet_mask: 255.255.255.0
+  lease_duration_hours: 8
+
+# -----------------------------------------------------------------------------
+# Servere
+# -----------------------------------------------------------------------------
+# Hver server far en VM klonet fra Packer-basen.
+# 'roles' bestemmer hvilke Ansible-roller som kjorer mot serveren.
+servers:
+  - hostname: DC01
+    ip: 10.50.0.10
+    cpus: 2
+    memory_mb: 4096
+    disk_gb: 60
+    roles:
+      - ad-forest                   # Forste DC i nytt forest
+      - dns-server
+      - dhcp-server
+
+  - hostname: FS01
+    ip: 10.50.0.20
+    cpus: 2
+    memory_mb: 2048
+    disk_gb: 100
+    roles:
+      - domain-member
+      - file-server
+
+# -----------------------------------------------------------------------------
+# Organisasjons-enheter (OU-er)
+# -----------------------------------------------------------------------------
+# Opprettes under domain root. Underliggende OU-er kan nestes med 'children'.
+organizational_units:
+  - name: Brukere
+    children:
+      - Tjeneste
+      - Vanlig
+  - name: Servere
+  - name: Klienter
+  - name: Grupper
+
+# -----------------------------------------------------------------------------
+# Sikkerhetsgrupper
+# -----------------------------------------------------------------------------
+security_groups:
+  - name: g_fileshare_read
+    ou: Grupper
+    scope: Global
+  - name: g_fileshare_write
+    ou: Grupper
+    scope: Global
+
+# -----------------------------------------------------------------------------
+# Brukere
+# -----------------------------------------------------------------------------
+# For storre lab-er — bruk users.csv og csv_users-rollen istedenfor a liste 50+
+# brukere her. Se docs/users.md.
+users:
+  - username: ola.nordmann
+    given_name: Ola
+    surname: Nordmann
+    ou: Brukere/Vanlig
+    initial_password: Velkommen2024!
+    must_change_password: true
+    groups:
+      - g_fileshare_read
+
+  - username: kari.hansen
+    given_name: Kari
+    surname: Hansen
+    ou: Brukere/Vanlig
+    initial_password: Velkommen2024!
+    must_change_password: true
+    groups:
+      - g_fileshare_write
+
+# -----------------------------------------------------------------------------
+# Group Policy Objects
+# -----------------------------------------------------------------------------
+# Minimum NSM-kompatibel baseline. Detaljer i ansible/roles/gpo-baseline.
+gpo:
+  - name: "Baseline-Passord-NSM"
+    target_ou: ""                   # Tomt = link til domain root
+    settings:
+      min_password_length: 14       # NSM Grunnprinsipp 2.6.3
+      password_history: 24
+      max_password_age_days: 365
+      lockout_threshold: 5
+      lockout_duration_minutes: 15
+
+  - name: "Baseline-Skjermlas"
+    target_ou: ""
+    settings:
+      screen_lock_timeout_seconds: 600

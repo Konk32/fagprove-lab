@@ -1,0 +1,15 @@
+# =============================================================================
+# variables.auto.pkrvars.hcl.example
+# =============================================================================
+# Kopier til 'variables.auto.pkrvars.hcl' og fyll inn faktiske verdier.
+# Den ekte filen er .gitignored — aldri commit hemmeligheter.
+#
+# winrm_password skal IKKE st her — sett den som miljovariabel:
+#   $env:PKR_VAR_winrm_password = "DittPassord"
+# =============================================================================
+
+iso_url      = "C:/iso/SERVER_EVAL_x64FRE_en-us.iso"
+iso_checksum = "sha256:ba5eaadbcd702fe8d41fb3ff5f713acde7b359467fc1eb6b8d8a3b44768663b9"
+
+winrm_username = "Administrator"
+# winrm_password = settes via PKR_VAR_winrm_password

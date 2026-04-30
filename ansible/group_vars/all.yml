@@ -1,0 +1,14 @@
+---
+# =============================================================================
+# group_vars/all.yml — Variabler tilgjengelige for ALLE hosts
+# =============================================================================
+# Dette er broen mellom config/lab.yml og Ansible. Vi leser hele lab.yml
+# inn i en variabel kalt 'lab', slik at playbooks kan referere til
+# {{ lab.domain.fqdn }}, {{ lab.dhcp.scope_name }} osv.
+# =============================================================================
+
+# Ladd hele lab.yml inn i variabelen 'lab'
+lab: "{{ lookup('file', playbook_dir + '/../../config/lab.yml') | from_yaml }}"
+
+# Snarveier som er nyttige overalt
+ad_admin_password: "{{ vault_admin_password }}"  # fra ansible-vault
