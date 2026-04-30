@@ -105,6 +105,7 @@ LISENS:
                 <ImageInstall>
                     <OSImage>
                         <InstallFrom>
+                            <Path>D:\sources\install.wim</Path>
                             <MetaData wcm:action="add">
                                 <Key>/IMAGE/NAME</Key>
                                 <Value>Windows Server 2022 Standard Evaluation (Desktop Experience)</Value>
