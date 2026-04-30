@@ -122,10 +122,10 @@ build {
   sources = ["source.vmware-iso.win2022"]
 
   # Steg 1: Installer Windows Updates (gjor imaget ferskt, men tidkrevende)
-  provisioner "powershell" {
-    script         = "scripts/install-updates.ps1"
-    timeout        = "2h"
-  }
+  # provisioner "powershell" {
+  #   script         = "scripts/install-updates.ps1"
+  #   timeout        = "2h"
+  # }
 
   # Steg 2: Reboot etter updates — windows-restart venter pa at WinRM er tilbake
   provisioner "windows-restart" {
