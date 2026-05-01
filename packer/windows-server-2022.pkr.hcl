@@ -131,23 +131,15 @@ build {
     restart_timeout = "20m"
   }
 
-  # Steg 3: Installer VMware Tools fra ISO som er montert
-  provisioner "powershell" {
-    script = "scripts/install-vmware-tools.ps1"
-  }
-
-  # Steg 4: Reboot etter VMware Tools (ofte krever det)
-  provisioner "windows-restart" {
-    restart_timeout = "10m"
-  }
-
   # Steg 5: Generaliser med sysprep — gjor imaget klonebart
   # Etter dette MA imaget aldri bootes igjen for det er klonet.
   provisioner "powershell" {
-    script = "scripts/sysprep.ps1"
-
-    # Sysprep slar av VM-en — Packer vil ellers tolke det som feil.
-    # 'valid_exit_codes' lar oss godta exit-koder fra forsvunnen tilkobling.
-    valid_exit_codes = [0, 1, 2300218]
+      inline = [
+        "Remove-Item -Path 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue",
+        "Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue",
+        "Remove-Item -Path 'C:\\Windows\\SoftwareDistribution\\Download\\*' -Recurse -Force -ErrorAction SilentlyContinue",
+        "& C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown /quiet"
+      ]
+      valid_exit_codes = [0, 1, 2300218]
   }
 }

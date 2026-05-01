@@ -107,8 +107,8 @@ LISENS:
                         <InstallFrom>
                             <Path>D:\sources\install.wim</Path>
                             <MetaData wcm:action="add">
-                                <Key>/IMAGE/NAME</Key>
-                                <Value>Windows Server 2022 Standard Evaluation (Desktop Experience)</Value>
+                                <Key>/IMAGE/INDEX</Key>
+                                <Value>2</Value>
                             </MetaData>
                         </InstallFrom>
                         <InstallTo>
@@ -227,28 +227,36 @@ LISENS:
             Hver command far en numerisk Order — Windows kjorer dem stigende.
             -->
             <FirstLogonCommands>
-
-                <!-- 1. Set network profile to Private (krever for WinRM) -->
                 <SynchronousCommand wcm:action="add">
                     <Order>1</Order>
                     <Description>Set network to Private</Description>
                     <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private"</CommandLine>
                 </SynchronousCommand>
-
-                <!-- 2. Hovedscript som setter opp WinRM (ligger pa floppy A:) -->
                 <SynchronousCommand wcm:action="add">
                     <Order>2</Order>
-                    <Description>Configure WinRM via floppy script</Description>
-                    <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -File a:\setup-winrm.ps1</CommandLine>
+                    <Description>Enable WinRM</Description>
+                    <CommandLine>cmd.exe /c winrm quickconfig -quiet -force</CommandLine>
                 </SynchronousCommand>
-
-                <!-- 3. Disable Server Manager auto-start (slipper popup vises) -->
                 <SynchronousCommand wcm:action="add">
                     <Order>3</Order>
-                    <Description>Disable Server Manager auto-start</Description>
+                    <Description>WinRM allow unencrypted</Description>
+                    <CommandLine>cmd.exe /c winrm set winrm/config/service @{AllowUnencrypted="true"}</CommandLine>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>4</Order>
+                    <Description>WinRM enable basic auth</Description>
+                    <CommandLine>cmd.exe /c winrm set winrm/config/service/auth @{Basic="true"}</CommandLine>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>5</Order>
+                    <Description>Open firewall for WinRM</Description>
+                    <CommandLine>cmd.exe /c netsh advfirewall firewall set rule group="Windows Remote Management" new enable=yes</CommandLine>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>6</Order>
+                    <Description>Disable Server Manager</Description>
                     <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</CommandLine>
                 </SynchronousCommand>
-
             </FirstLogonCommands>
         </component>
     </settings>

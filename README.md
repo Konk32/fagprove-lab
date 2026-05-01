@@ -53,4 +53,4 @@ Tidlig fase. Se `docs/ROADMAP.md` for hva som er på vei.
 
 ## Lisens
 
-MIT — bruk fritt, men ingen garantier.
+DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
