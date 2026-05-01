@@ -120,19 +120,12 @@ source "vmware-iso" "win2022" {
 build {
   sources = ["source.vmware-iso.win2022"]
 
-  # Steg 1: Installer Windows Updates (gjor imaget ferskt, men tidkrevende)
-  # provisioner "powershell" {
-  #   script         = "scripts/install-updates.ps1"
-  #   timeout        = "2h"
-  # }
 
-  # Steg 2: Reboot etter updates — windows-restart venter pa at WinRM er tilbake
-  provisioner "windows-restart" {
-    restart_timeout = "20m"
+  provisioner "powershell" {
+    inline = ["Start-Sleep -Seconds 60"]
+    pause_before = "60s"
   }
 
-  # Steg 5: Generaliser med sysprep — gjor imaget klonebart
-  # Etter dette MA imaget aldri bootes igjen for det er klonet.
   provisioner "powershell" {
       inline = [
         "Remove-Item -Path 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue",
