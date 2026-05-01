@@ -90,15 +90,16 @@ Write-Host "-----------------------------------"
 # Forst kopier en sysprep-spesifikk unattend hvis vi har en
 # (For na: bruk samme som ble brukt under install)
 $sysprepUnattend = "C:\Windows\Panther\unattend.xml"
+$sysprepExe = "C:\Windows\System32\Sysprep\sysprep.exe"
+
 if (Test-Path $sysprepUnattend) {
-    Write-Host "Bruker $sysprepUnattend for neste boot"
-    & C:\Windows\System32\Sysprep\sysprep.exe `
-        /generalize /oobe /shutdown /quiet /unattend:$sysprepUnattend
+    Write-Host "Bruker eksisterende unattend.xml"
+    Start-Process -FilePath $sysprepExe -ArgumentList "/generalize", "/oobe", "/shutdown", "/quiet", "/unattend:$sysprepUnattend" -Wait
 } else {
-    Write-Host "Ingen unattend.xml funnet — sysprep uten unattend"
-    & C:\Windows\System32\Sysprep\sysprep.exe `
-        /generalize /oobe /shutdown /quiet
+    Write-Host "Ingen unattend.xml funnet"
+    Start-Process -FilePath $sysprepExe -ArgumentList "/generalize", "/oobe", "/shutdown", "/quiet" -Wait
 }
 
-# Vi kommer aldri hit — sysprep /shutdown gir oss ikke kontroll tilbake
+Stop-Transcript
+
 Stop-Transcript
