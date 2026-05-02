@@ -94,12 +94,10 @@ $sysprepExe = "C:\Windows\System32\Sysprep\sysprep.exe"
 
 if (Test-Path $sysprepUnattend) {
     Write-Host "Bruker eksisterende unattend.xml"
-    Start-Process -FilePath $sysprepExe -ArgumentList "/generalize", "/oobe", "/shutdown", "/quiet", "/unattend:$sysprepUnattend" -Wait
+    Start-Process -FilePath $sysprepExe -ArgumentList "/generalize", "/oobe", "/quit", "/quiet", "/unattend:$sysprepUnattend" -Wait
 } else {
     Write-Host "Ingen unattend.xml funnet"
-    Start-Process -FilePath $sysprepExe -ArgumentList "/generalize", "/oobe", "/shutdown", "/quiet" -Wait
+    Start-Process -FilePath $sysprepExe -ArgumentList "/generalize", "/oobe", "/quit", "/quiet" -Wait
 }
-
-Stop-Transcript
 
 Stop-Transcript

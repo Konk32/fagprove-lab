@@ -36,3 +36,6 @@ Thumbs.db
 
 # Generert inventory (output fra config/lab.yml)
 ansible/inventory/generated/
+
+# Ferdigbygd windows image
+win2022-base-final/

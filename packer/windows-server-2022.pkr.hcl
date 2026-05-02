@@ -44,7 +44,7 @@ variable "winrm_username" {
 
 variable "winrm_password" {
   type      = string
-  default   = "Packer2024!"  # MA matche autounattend.xml
+  default   = "Lab123"  # MA matche autounattend.xml
   sensitive = true
 }
 
@@ -93,7 +93,7 @@ source "vmware-iso" "win2022" {
 
   # Workstation-spesifikke felt
   version              = "20"                # VM hardware version (Workstation 17)
-  output_directory     = var.output_directory
+  output_directory = "win2022-base-final"
   headless             = false               # Set til true for a kjore i bakgrunnen
 
   # ----- Connection etter boot -----
@@ -108,8 +108,8 @@ source "vmware-iso" "win2022" {
 
   # Ren shutdown nar build er ferdig.
   # MERK: sysprep.ps1 gjor egen shutdown — denne er fallback hvis sysprep skipas.
-  shutdown_command     = "shutdown /s /t 10 /f /d p:4:1 /c \"Packer build done\""
-  shutdown_timeout     = "30m"
+  shutdown_command = "echo done"
+  shutdown_timeout = "30m"
 
   # Tools-ISO mounting — Packer monterer windows.iso automatisk her hvis tools_upload_flavor er satt
   tools_mode = "disable"
@@ -124,12 +124,21 @@ build {
   provisioner "powershell" {
     pause_before = "60s"
     inline = [
-      "Write-Host 'Starting cleanup and sysprep'",
-      "Remove-Item -Path 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue",
-      "Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue",
-      "Remove-Item -Path 'C:\\Windows\\SoftwareDistribution\\Download\\*' -Recurse -Force -ErrorAction SilentlyContinue",
-      "& C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /quiet /quit"
+      "Write-Host 'Cleanup'",
+      "Remove-Item -Path 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue"
     ]
-    valid_exit_codes = [0, 1, 2300218]
+  }
+
+  # Schedule sysprep til å kjøre 30 sekunder fra nå via Task Scheduler.
+  # Provisioneren returnerer umiddelbart, sysprep kjører LENGE etter
+  # at WinRM-tilkoblingen er ferdig brukt av Packer.
+  provisioner "powershell" {
+    inline = [
+      "$action = New-ScheduledTaskAction -Execute 'C:\\Windows\\System32\\Sysprep\\sysprep.exe' -Argument '/generalize /oobe /quiet /shutdown'",
+      "$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(30)",
+      "$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest",
+      "Register-ScheduledTask -TaskName 'PackerSysprep' -Action $action -Trigger $trigger -Principal $principal -Force",
+      "Write-Host 'Sysprep scheduled in 30 seconds'"
+    ]
   }
 }
