@@ -39,3 +39,4 @@ ansible/inventory/generated/
 
 # Ferdigbygd windows image
 win2022-base-final/
+win2022-base-final.backup/
