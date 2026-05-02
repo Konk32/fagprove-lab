@@ -1,0 +1,97 @@
+---
+# =============================================================================
+# roles/dhcp-server/tasks/main.yml
+# =============================================================================
+# Installerer DHCP-tjenesten pa DC01 og oppretter scope fra lab.yml.
+# Kjorer mot dhcp_servers (DC01).
+# =============================================================================
+
+- name: "Installer DHCP-rolle"
+  ansible.windows.win_feature:
+    name:
+      - DHCP
+      - RSAT-DHCP
+    state: present
+    include_management_tools: true
+  register: dhcp_install
+
+- name: "Reboot etter DHCP-installasjon (hvis pakrevd)"
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+  when: dhcp_install.reboot_required
+
+- name: "Konfigurer DHCP-server (security-grupper og post-install)"
+  ansible.windows.win_shell: |
+    # Lag DHCP security-grupper hvis de ikke finnes
+    if (-not (Get-LocalGroup -Name "DHCP Administrators" -ErrorAction SilentlyContinue)) {
+        netsh dhcp add securitygroups
+    }
+    # Marker som installert (krever AD-registrering hvis i domene)
+    Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\ServerManager\Roles\12" -Name "ConfigurationState" -Value 2 -ErrorAction SilentlyContinue
+  changed_when: false
+
+- name: "Restart DHCP-tjenesten"
+  ansible.windows.win_service:
+    name: DHCPServer
+    state: restarted
+
+- name: "Autoriser DHCP-server i AD"
+  ansible.windows.win_shell: |
+    $dcIp = "{{ ansible_host }}"
+    $dcFqdn = "{{ inventory_hostname }}.{{ lab.domain.fqdn }}"
+    if (-not (Get-DhcpServerInDC | Where-Object { $_.IPAddress -eq $dcIp })) {
+        Add-DhcpServerInDC -DnsName $dcFqdn -IPAddress $dcIp
+        Write-Output "DHCP authorized in AD"
+    } else {
+        Write-Output "DHCP already authorized"
+    }
+  register: dhcp_auth
+  changed_when: "'authorized in AD' in dhcp_auth.stdout"
+
+- name: "Opprett DHCP-scope fra lab.yml"
+  ansible.windows.win_shell: |
+    $scopeName  = "{{ lab.dhcp.scope_name }}"
+    $startRange = "{{ lab.dhcp.start_range }}"
+    $endRange   = "{{ lab.dhcp.end_range }}"
+    $subnetMask = "{{ lab.dhcp.subnet_mask }}"
+
+    # Slett eksisterende scope hvis det finnes (idempotens)
+    $existing = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq $scopeName }
+    if ($existing) {
+        Write-Output "Scope finnes allerede: $($existing.ScopeId)"
+    } else {
+        Add-DhcpServerv4Scope `
+            -Name $scopeName `
+            -StartRange $startRange `
+            -EndRange $endRange `
+            -SubnetMask $subnetMask `
+            -State Active `
+            -LeaseDuration ([TimeSpan]::FromHours({{ lab.dhcp.lease_duration_hours }}))
+        Write-Output "Scope opprettet"
+    }
+  register: scope_create
+  changed_when: "'Scope opprettet' in scope_create.stdout"
+
+- name: "Sett scope-options (router, DNS, domain)"
+  ansible.windows.win_shell: |
+    $scopeId = "{{ lab.dhcp.start_range | regex_replace('\.\d+$', '.0') }}"
+
+    # Option 003: Router (gateway)
+    Set-DhcpServerv4OptionValue -ScopeId $scopeId -Router "{{ lab.network.gateway }}" -Force
+
+    # Option 006: DNS (DC01)
+    Set-DhcpServerv4OptionValue -ScopeId $scopeId -DnsServer "{{ ansible_host }}" -Force
+
+    # Option 015: DNS Domain Name
+    Set-DhcpServerv4OptionValue -ScopeId $scopeId -DnsDomain "{{ lab.domain.fqdn }}" -Force
+  changed_when: false
+
+- name: "Vis DHCP-status"
+  ansible.windows.win_shell: |
+    Get-DhcpServerv4Scope | Format-List Name, ScopeId, StartRange, EndRange, State
+  register: dhcp_status
+  changed_when: false
+
+- name: "Vis scope-info"
+  ansible.builtin.debug:
+    msg: "{{ dhcp_status.stdout_lines }}"

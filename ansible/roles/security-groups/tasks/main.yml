@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# roles/security-groups/tasks/main.yml
+# =============================================================================
+# Oppretter AD-sikkerhetsgrupper fra lab.yml.
+# Kjorer mot DC01.
+# =============================================================================
+
+- name: "Beregn domain DN"
+  ansible.builtin.set_fact:
+    domain_dn: "DC={{ lab.domain.fqdn | replace('.', ',DC=') }}"
+
+- name: "Opprett sikkerhetsgrupper"
+  microsoft.ad.group:
+    name: "{{ item.name }}"
+    scope: "{{ item.scope | default('Global') | lower }}"
+    category: security
+    path: "OU={{ item.ou }},{{ domain_dn }}"
+    state: present
+  loop: "{{ lab.security_groups }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Verifiser at gruppene finnes"
+  ansible.windows.win_shell: |
+    Get-ADGroup -Filter * -SearchBase "OU=Grupper,{{ domain_dn }}" |
+      Select-Object Name, GroupScope, GroupCategory |
+      Format-Table -AutoSize
+  register: group_list
+  changed_when: false
+
+- name: "Vis grupper"
+  ansible.builtin.debug:
+    msg: "{{ group_list.stdout_lines }}"

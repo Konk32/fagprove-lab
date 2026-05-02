@@ -1,0 +1,62 @@
+---
+# =============================================================================
+# roles/users-from-config/tasks/main.yml
+# =============================================================================
+# Oppretter AD-brukere fra lab.yml.
+# =============================================================================
+
+- name: "Beregn domain DN"
+  ansible.builtin.set_fact:
+    domain_dn: "DC={{ lab.domain.fqdn | replace('.', ',DC=') }}"
+
+- name: "Bygg full OU-path per bruker (innerst forst)"
+  ansible.builtin.set_fact:
+    users_with_path: >-
+      {{ users_with_path | default([]) + [
+           item | combine({
+             'full_path': (item.ou.split('/') | reverse | map('regex_replace', '^(.*)$', 'OU=\1') | list | join(','))
+                          + ',' + domain_dn
+           })
+         ] }}
+  loop: "{{ lab.users }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: "Vis utregnede paths"
+  ansible.builtin.debug:
+    msg: "{{ item.username }} -> {{ item.full_path }}"
+  loop: "{{ users_with_path }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: "Opprett brukere"
+  microsoft.ad.user:
+    name: "{{ item.username }}"
+    sam_account_name: "{{ item.username }}"
+    upn: "{{ item.username }}@{{ lab.domain.fqdn }}"
+    firstname: "{{ item.given_name }}"
+    surname: "{{ item.surname }}"
+    display_name: "{{ item.given_name }} {{ item.surname }}"
+    password: "{{ item.initial_password }}"
+    password_never_expires: false
+    password_expired: "{{ item.must_change_password | default(true) }}"
+    enabled: true
+    path: "{{ item.full_path }}"
+    groups:
+      add: "{{ item.groups | default([]) }}"
+    state: present
+  loop: "{{ users_with_path }}"
+  loop_control:
+    label: "{{ item.username }}"
+
+- name: "List opprettede brukere"
+  ansible.windows.win_shell: |
+    Get-ADUser -Filter * -SearchBase "OU=Brukere,{{ domain_dn }}" -Properties DisplayName |
+      Select-Object Name, DisplayName, Enabled |
+      Format-Table -AutoSize
+  register: user_list
+  changed_when: false
+
+- name: "Vis brukere"
+  ansible.builtin.debug:
+    msg: "{{ user_list.stdout_lines }}"

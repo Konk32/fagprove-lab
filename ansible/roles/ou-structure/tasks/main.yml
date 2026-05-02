@@ -1,0 +1,48 @@
+---
+# =============================================================================
+# roles/ou-structure/tasks/main.yml
+# =============================================================================
+# Oppretter OU-struktur i AD basert pa lab.yml.
+# Stotter nestede OU-er via 'children'-listen.
+# Kjorer mot DC01.
+# =============================================================================
+
+- name: "Beregn domain DN fra FQDN"
+  # Konverterer "corp.lab.local" til "DC=corp,DC=lab,DC=local"
+  ansible.builtin.set_fact:
+    domain_dn: "DC={{ lab.domain.fqdn | replace('.', ',DC=') }}"
+
+- name: "Vis domain-DN"
+  ansible.builtin.debug:
+    msg: "Domain DN: {{ domain_dn }}"
+
+- name: "Opprett root-OU-er"
+  microsoft.ad.ou:
+    name: "{{ item.name }}"
+    path: "{{ domain_dn }}"
+    state: present
+  loop: "{{ lab.organizational_units }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: "Opprett barn-OU-er"
+  microsoft.ad.ou:
+    name: "{{ child }}"
+    path: "OU={{ parent.name }},{{ domain_dn }}"
+    state: present
+  loop: "{{ lab.organizational_units | subelements('children', skip_missing=True) }}"
+  loop_control:
+    label: "{{ item.0.name }}/{{ item.1 }}"
+  vars:
+    parent: "{{ item.0 }}"
+    child: "{{ item.1 }}"
+
+- name: "List opprettede OU-er"
+  ansible.windows.win_shell: |
+    Get-ADOrganizationalUnit -Filter * | Select-Object Name, DistinguishedName | Format-List
+  register: ou_list
+  changed_when: false
+
+- name: "Vis OU-er"
+  ansible.builtin.debug:
+    msg: "{{ ou_list.stdout_lines }}"

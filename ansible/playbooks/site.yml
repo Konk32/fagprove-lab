@@ -1,40 +1,110 @@
 ---
 # =============================================================================
-# site.yml — Hovedplaybook for AD/DHCP/GPO-deployment
+# site.yml — Hovedplaybook for fagprove-lab
 # =============================================================================
-# Forutsetter:
-#   - VM-er klonet med scripts/clone-vms.ps1
-#   - WinRM tilgjengelig pa hver host
-#   - ansible/inventory/hosts.yml generert med generate-inventory.py
-#
 # Kjor med:
-#   ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml
+#   ansible-playbook -i inventory/hosts.yml playbooks/site.yml
+#
+# Forutsetninger:
+#   - VM-er klonet via scripts/clone-vms.ps1
+#   - WinRM tilgjengelig pa hver host
+#   - inventory/hosts.yml generert av generate-inventory.py
 # =============================================================================
 
+# Trick for a laste lab.yml som "lab"-variabel siden group_vars-mappa
+# ignoreres av Ansible nar repoet ligger pa NTFS (world-writable).
+# vars_files er play-niva og lastes ALLTID, uavhengig av cfg-warnings.
+
 # -----------------------------------------------------------------------------
-# Play 1: Felles forberedelse av alle Windows-hosts
+# Play 1: Felles forberedelse
 # -----------------------------------------------------------------------------
 - name: "Forberedelse — alle Windows-servere"
   hosts: windows
   gather_facts: yes
+  vars_files:
+    - ../../config/lab.yml
+  vars:
+    lab:
+      domain:
+        fqdn: "{{ domain.fqdn }}"
+        netbios: "{{ domain.netbios }}"
+        safe_mode_password: "{{ domain.safe_mode_password }}"
+      local_admin: "{{ local_admin }}"
+      network: "{{ network }}"
+      dhcp: "{{ dhcp }}"
+      organizational_units: "{{ organizational_units }}"
+      security_groups: "{{ security_groups }}"
+      users: "{{ users }}"
+      gpo: "{{ gpo }}"
   roles:
     - prep-windows
 
 # -----------------------------------------------------------------------------
-# Play 2: Promoter forste DC og opprett forest
+# Play 2: Promoter forste DC
 # -----------------------------------------------------------------------------
 - name: "Bygg AD-forest pa DC01"
   hosts: domain_controllers
   gather_facts: yes
+  vars_files:
+    - ../../config/lab.yml
+  vars:
+    lab:
+      domain:
+        fqdn: "{{ domain.fqdn }}"
+        netbios: "{{ domain.netbios }}"
+        safe_mode_password: "{{ domain.safe_mode_password }}"
+      local_admin: "{{ local_admin }}"
+      network: "{{ network }}"
+      dhcp: "{{ dhcp }}"
+      organizational_units: "{{ organizational_units }}"
+      security_groups: "{{ security_groups }}"
+      users: "{{ users }}"
+      gpo: "{{ gpo }}"
   roles:
     - ad-forest
 
 # -----------------------------------------------------------------------------
-# Play 3+: Kommer i senere batches
+# Play 3: Member servers joiner domenet
 # -----------------------------------------------------------------------------
-# - dhcp-server  (scope fra lab.yml)
-# - domain-member (FS01 joiner domain)
-# - ou-structure
-# - security-groups
-# - users-from-config
-# - gpo-baseline
+- name: "Domain-join member servers"
+  hosts: member_servers
+  gather_facts: no
+  vars_files:
+    - ../../config/lab.yml
+  vars:
+    lab:
+      domain:
+        fqdn: "{{ domain.fqdn }}"
+        netbios: "{{ domain.netbios }}"
+        safe_mode_password: "{{ domain.safe_mode_password }}"
+      local_admin: "{{ local_admin }}"
+  roles:
+    - domain-member
+
+# -----------------------------------------------------------------------------
+# Play 4: AD-objekter og DHCP (kjorer pa DC01 etter promovering)
+# -----------------------------------------------------------------------------
+- name: "AD-objekter og DHCP"
+  hosts: domain_controllers
+  gather_facts: no
+  vars_files:
+    - ../../config/lab.yml
+  vars:
+    lab:
+      domain:
+        fqdn: "{{ domain.fqdn }}"
+        netbios: "{{ domain.netbios }}"
+        safe_mode_password: "{{ domain.safe_mode_password }}"
+      local_admin: "{{ local_admin }}"
+      network: "{{ network }}"
+      dhcp: "{{ dhcp }}"
+      organizational_units: "{{ organizational_units }}"
+      security_groups: "{{ security_groups }}"
+      users: "{{ users }}"
+      gpo: "{{ gpo }}"
+  roles:
+    - ou-structure
+    - security-groups
+    - users-from-config
+    - dhcp-server
+    - gpo-baseline

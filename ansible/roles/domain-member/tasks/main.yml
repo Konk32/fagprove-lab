@@ -1,0 +1,32 @@
+---
+# =============================================================================
+# roles/domain-member/tasks/main.yml
+# =============================================================================
+# Joiner host i AD-domenet. Kjorer mot member_servers.
+# Forutsetning: DC01 er promotert og DNS-server peker pa DC01.
+# =============================================================================
+
+- name: "Sjekk at DC er naabar fra denne hosten"
+  ansible.windows.win_shell: |
+    Test-Connection -ComputerName "{{ lab.domain.fqdn }}" -Count 1 -Quiet
+  register: dc_reachable
+  changed_when: false
+  failed_when: dc_reachable.stdout | trim != "True"
+
+- name: "Join domenet"
+  microsoft.ad.membership:
+    dns_domain_name: "{{ lab.domain.fqdn }}"
+    domain_admin_user: "Administrator@{{ lab.domain.fqdn }}"
+    domain_admin_password: "{{ lab.local_admin.password }}"
+    state: domain
+    reboot: true
+
+- name: "Verifiser at hosten er domain-joined"
+  ansible.windows.win_shell: |
+    (Get-CimInstance Win32_ComputerSystem).Domain
+  register: domain_check
+  changed_when: false
+
+- name: "Vis domain-status"
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} er nu medlem av: {{ domain_check.stdout | trim }}"
