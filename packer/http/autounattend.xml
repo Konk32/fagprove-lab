@@ -234,28 +234,18 @@ LISENS:
                 </SynchronousCommand>
                 <SynchronousCommand wcm:action="add">
                     <Order>2</Order>
-                    <Description>Enable WinRM</Description>
-                    <CommandLine>cmd.exe /c winrm quickconfig -quiet -force</CommandLine>
+                    <Description>Configure WinRM via batch</Description>
+                    <CommandLine>cmd.exe /c a:\winrmConfig.bat</CommandLine>
                 </SynchronousCommand>
                 <SynchronousCommand wcm:action="add">
                     <Order>3</Order>
-                    <Description>WinRM allow unencrypted</Description>
-                    <CommandLine>cmd.exe /c winrm set winrm/config/service @{AllowUnencrypted="true"}</CommandLine>
+                    <Description>Disable Server Manager auto-start</Description>
+                    <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</CommandLine>
                 </SynchronousCommand>
                 <SynchronousCommand wcm:action="add">
                     <Order>4</Order>
-                    <Description>WinRM enable basic auth</Description>
-                    <CommandLine>cmd.exe /c winrm set winrm/config/service/auth @{Basic="true"}</CommandLine>
-                </SynchronousCommand>
-                <SynchronousCommand wcm:action="add">
-                    <Order>5</Order>
-                    <Description>Open firewall for WinRM</Description>
-                    <CommandLine>cmd.exe /c netsh advfirewall firewall set rule group="Windows Remote Management" new enable=yes</CommandLine>
-                </SynchronousCommand>
-                <SynchronousCommand wcm:action="add">
-                    <Order>6</Order>
-                    <Description>Disable Server Manager</Description>
-                    <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</CommandLine>
+                    <Description>Disable firewall completely</Description>
+                    <CommandLine>cmd.exe /c netsh advfirewall set allprofiles state off</CommandLine>
                 </SynchronousCommand>
             </FirstLogonCommands>
         </component>

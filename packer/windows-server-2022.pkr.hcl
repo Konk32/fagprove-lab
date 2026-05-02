@@ -73,7 +73,7 @@ source "vmware-iso" "win2022" {
   # FirstLogonCommands kjorer 'a:\setup-winrm.ps1'.
   floppy_files = [
     "http/autounattend.xml",
-    "http/setup-winrm.ps1"
+    "http/winrmConfig.bat"
   ]
 
   # boot_command sendes som tastetrykk til VM-en under boot.
@@ -104,6 +104,7 @@ source "vmware-iso" "win2022" {
   winrm_timeout        = "2h"                # Inkluderer Windows install-tid
   winrm_use_ssl        = false               # Self-signed cert er pain — Ansible bruker HTTPS senere
   winrm_insecure       = true
+  winrm_use_ntlm       = true
 
   # Ren shutdown nar build er ferdig.
   # MERK: sysprep.ps1 gjor egen shutdown — denne er fallback hvis sysprep skipas.
@@ -120,19 +121,15 @@ source "vmware-iso" "win2022" {
 build {
   sources = ["source.vmware-iso.win2022"]
 
-
   provisioner "powershell" {
-    inline = ["Start-Sleep -Seconds 60"]
     pause_before = "60s"
-  }
-
-  provisioner "powershell" {
-      inline = [
-        "Remove-Item -Path 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue",
-        "Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue",
-        "Remove-Item -Path 'C:\\Windows\\SoftwareDistribution\\Download\\*' -Recurse -Force -ErrorAction SilentlyContinue",
-        "& C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /shutdown /quiet"
-      ]
-      valid_exit_codes = [0, 1, 2300218]
+    inline = [
+      "Write-Host 'Starting cleanup and sysprep'",
+      "Remove-Item -Path 'C:\\Windows\\Temp\\*' -Recurse -Force -ErrorAction SilentlyContinue",
+      "Stop-Service -Name wuauserv -Force -ErrorAction SilentlyContinue",
+      "Remove-Item -Path 'C:\\Windows\\SoftwareDistribution\\Download\\*' -Recurse -Force -ErrorAction SilentlyContinue",
+      "& C:\\Windows\\System32\\Sysprep\\sysprep.exe /generalize /oobe /quiet /quit"
+    ]
+    valid_exit_codes = [0, 1, 2300218]
   }
 }
