@@ -1,0 +1,10 @@
+---
+# defaults/main.yml — ad-forest
+# Variabler kan overstyres pa playbook-niva, men disse er fornuftige defaults.
+
+# Forest-funksjonsniva. Win2016 er bredt stottet og kompatibelt.
+ad_forest_mode: "Win2016"
+ad_domain_mode: "Win2016"
+
+# Reboot timeout i sekunder etter promotering
+ad_reboot_timeout: 900

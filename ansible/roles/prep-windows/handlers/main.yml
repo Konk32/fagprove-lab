@@ -1,0 +1,4 @@
+---
+- name: reboot if needed
+  ansible.windows.win_reboot:
+    reboot_timeout: 600

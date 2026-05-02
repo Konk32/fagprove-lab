@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+=============================================================================
+clone-unattend.xml.template — Per-VM unattend for klonede sysprep'd VM-er
+=============================================================================
+Brukes av scripts/clone-vms.ps1 til a generere en unik unattend.xml for
+hver klone. Plasseres pa virtuell floppy som monteres i klonens VMX.
+
+Variabler som erstattes av clone-vms.ps1:
+  {{HOSTNAME}}      Computer name (DC01, FS01, etc)
+  {{IP_ADDRESS}}    Statisk IP (10.50.0.10, etc)
+  {{SUBNET_PREFIX}} CIDR prefix-lengde (24)
+  {{GATEWAY}}       Default gateway (10.50.0.1)
+  {{DNS_SERVER}}    Primaer DNS (DC01s IP)
+  {{ADMIN_PASSWORD}} Administrator-passord (Packer2024!)
+
+Sysprep'd Windows ser etter denne i A:\unattend.xml ved forste boot.
+=============================================================================
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+
+    <!--
+    =========================================================================
+    PASS: specialize
+    =========================================================================
+    Kjorer ETTER sysprep har sluppet imaget tilbake til OOBE-stadiet.
+    Her setter vi computer name og statisk IP.
+    =========================================================================
+    -->
+    <settings pass="specialize">
+
+        <!-- Computer name -->
+        <component name="Microsoft-Windows-Shell-Setup"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <ComputerName>{{HOSTNAME}}</ComputerName>
+            <TimeZone>W. Europe Standard Time</TimeZone>
+        </component>
+
+        <!--
+        Statisk IP-konfigurasjon.
+        Identifier="Ethernet" matcher den forste nettverksadapteren — vanligvis
+        eth0 / "Ethernet0" i Windows. Hvis det ikke matcher kan vi senere bytte
+        til MAC-basert matching.
+        -->
+        <component name="Microsoft-Windows-TCPIP"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Interfaces>
+                <Interface wcm:action="add">
+                    <Identifier>Ethernet0</Identifier>
+                    <Ipv4Settings>
+                        <DhcpEnabled>false</DhcpEnabled>
+                        <RouterDiscoveryEnabled>false</RouterDiscoveryEnabled>
+                        <Metric>10</Metric>
+                    </Ipv4Settings>
+                    <UnicastIpAddresses>
+                        <IpAddress wcm:action="add" wcm:keyValue="1">{{IP_ADDRESS}}/{{SUBNET_PREFIX}}</IpAddress>
+                    </UnicastIpAddresses>
+                    <Routes>
+                        <Route wcm:action="add">
+                            <Identifier>0</Identifier>
+                            <Prefix>0.0.0.0/0</Prefix>
+                            <NextHopAddress>{{GATEWAY}}</NextHopAddress>
+                            <Metric>10</Metric>
+                        </Route>
+                    </Routes>
+                </Interface>
+            </Interfaces>
+        </component>
+
+        <!-- DNS-konfigurasjon — peker pa DC01 -->
+        <component name="Microsoft-Windows-DNS-Client"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <Interfaces>
+                <Interface wcm:action="add">
+                    <Identifier>Ethernet0</Identifier>
+                    <DNSServerSearchOrder>
+                        <IpAddress wcm:action="add" wcm:keyValue="1">{{DNS_SERVER}}</IpAddress>
+                    </DNSServerSearchOrder>
+                    <EnableAdapterDomainNameRegistration>true</EnableAdapterDomainNameRegistration>
+                    <DisableDynamicUpdate>false</DisableDynamicUpdate>
+                </Interface>
+            </Interfaces>
+        </component>
+    </settings>
+
+    <!--
+    =========================================================================
+    PASS: oobeSystem
+    =========================================================================
+    Skipper OOBE-skjermen og setter admin-passord.
+    =========================================================================
+    -->
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+                <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+                <NetworkLocation>Work</NetworkLocation>
+                <ProtectYourPC>3</ProtectYourPC>
+                <SkipMachineOOBE>true</SkipMachineOOBE>
+                <SkipUserOOBE>true</SkipUserOOBE>
+            </OOBE>
+
+            <UserAccounts>
+                <AdministratorPassword>
+                    <Value>{{ADMIN_PASSWORD}}</Value>
+                    <PlainText>true</PlainText>
+                </AdministratorPassword>
+            </UserAccounts>
+
+            <!--
+            FirstLogonCommands gjenoppretter WinRM etter sysprep.
+            Sysprep deaktiverer WinRM-listenere som del av generalisering,
+            sa vi ma sla det pa igjen ved forste boot.
+            -->
+            <FirstLogonCommands>
+                <SynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <Description>Set network to Private</Description>
+                    <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private"</CommandLine>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>2</Order>
+                    <Description>Configure WinRM via batch from floppy</Description>
+                    <CommandLine>cmd.exe /c a:\winrmConfig.bat</CommandLine>
+                </SynchronousCommand>
+                <SynchronousCommand wcm:action="add">
+                    <Order>3</Order>
+                    <Description>Disable Server Manager auto-start</Description>
+                    <CommandLine>reg add "HKLM\SOFTWARE\Microsoft\ServerManager" /v DoNotOpenServerManagerAtLogon /t REG_DWORD /d 1 /f</CommandLine>
+                </SynchronousCommand>
+            </FirstLogonCommands>
+        </component>
+    </settings>
+</unattend>

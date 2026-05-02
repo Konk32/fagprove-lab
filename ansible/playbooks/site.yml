@@ -1,97 +1,40 @@
 ---
 # =============================================================================
-# site.yml — Hovedplaybook for hele lab-deploymenten
+# site.yml — Hovedplaybook for AD/DHCP/GPO-deployment
 # =============================================================================
-# Kjorer mot alle servere som er definert i inventory.
-# Leser config/lab.yml via group_vars/all.yml.
+# Forutsetter:
+#   - VM-er klonet med scripts/clone-vms.ps1
+#   - WinRM tilgjengelig pa hver host
+#   - ansible/inventory/hosts.yml generert med generate-inventory.py
 #
 # Kjor med:
-#   ansible-playbook -i inventory/hosts.yml playbooks/site.yml
-#
-# For idempotenstesting:
-#   ansible-playbook -i inventory/hosts.yml playbooks/site.yml --check
+#   ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# Play 1: Forberedelse av alle Windows-VM-er
+# Play 1: Felles forberedelse av alle Windows-hosts
 # -----------------------------------------------------------------------------
-# Setter hostname, IP-konfig, tidssynk for ALT annet skjer.
-# (VM-klokke ut av sync var en av Annes hovedpoenger.)
 - name: "Forberedelse — alle Windows-servere"
   hosts: windows
   gather_facts: yes
-  tasks:
-    - name: "Sett hostname"
-      ansible.windows.win_hostname:
-        name: "{{ inventory_hostname }}"
-      register: hostname_result
-
-    - name: "Reboot hvis hostname endret"
-      ansible.windows.win_reboot:
-      when: hostname_result.reboot_required
-
-    - name: "Konfigurer NTP mot internett-tid"
-      # NTP er kritisk for AD — Kerberos-tickets bryter ved >5 min skew
-      ansible.windows.win_shell: |
-        w32tm /config /manualpeerlist:"time.cloudflare.com,0x9" /syncfromflags:manual /reliable:yes /update
-        Restart-Service w32time
-        w32tm /resync /force
+  roles:
+    - prep-windows
 
 # -----------------------------------------------------------------------------
 # Play 2: Promoter forste DC og opprett forest
 # -----------------------------------------------------------------------------
-- name: "Bygg AD-forest"
-  hosts: dc01
+- name: "Bygg AD-forest pa DC01"
+  hosts: domain_controllers
   gather_facts: yes
   roles:
-    - role: ad-forest
-      vars:
-        ad_domain_name: "{{ lab.domain.fqdn }}"
-        ad_domain_netbios: "{{ lab.domain.netbios }}"
-        ad_safe_mode_password: "{{ lab.domain.safe_mode_password }}"
+    - ad-forest
 
 # -----------------------------------------------------------------------------
-# Play 3: Konfigurer DHCP pa DC01
+# Play 3+: Kommer i senere batches
 # -----------------------------------------------------------------------------
-- name: "DHCP-konfigurasjon"
-  hosts: dc01
-  gather_facts: no
-  roles:
-    - role: dhcp-server
-      vars:
-        dhcp_scope: "{{ lab.dhcp }}"
-
-# -----------------------------------------------------------------------------
-# Play 4: Bli med medlemsservere i domenet
-# -----------------------------------------------------------------------------
-- name: "Domain-join member servers"
-  hosts: member_servers
-  gather_facts: no
-  tasks:
-    - name: "Join domain"
-      microsoft.ad.membership:
-        dns_domain_name: "{{ lab.domain.fqdn }}"
-        domain_admin_user: "Administrator@{{ lab.domain.fqdn }}"
-        domain_admin_password: "{{ ad_admin_password }}"
-        state: domain
-        reboot: true
-
-# -----------------------------------------------------------------------------
-# Play 5: Opprett OU-struktur, grupper og brukere
-# -----------------------------------------------------------------------------
-- name: "AD-objekter (OU/grupper/brukere)"
-  hosts: dc01
-  gather_facts: no
-  roles:
-    - role: ou-structure
-    - role: security-groups
-    - role: users-from-config
-
-# -----------------------------------------------------------------------------
-# Play 6: GPO-baseline (NSM-kompatibelt minimum)
-# -----------------------------------------------------------------------------
-- name: "Group Policy Objects"
-  hosts: dc01
-  gather_facts: no
-  roles:
-    - role: gpo-baseline
+# - dhcp-server  (scope fra lab.yml)
+# - domain-member (FS01 joiner domain)
+# - ou-structure
+# - security-groups
+# - users-from-config
+# - gpo-baseline
