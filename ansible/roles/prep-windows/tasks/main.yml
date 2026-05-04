@@ -2,17 +2,12 @@
 # =============================================================================
 # roles/prep-windows/tasks/main.yml
 # =============================================================================
-# Forste rolle som kjorer mot alle Windows-servere ETTER de er klonet.
-# Forutsetninger:
-#   - VM bootet og fullforte specialize-pass (hostname satt via unattend.xml)
-#   - WinRM lytter pa 5985
-#   - Vi kommer inn som Administrator med Packer2024!-passordet
+# Forberedelse av Windows-host etter cloning. Kjorer mot ALLE Windows-hosts.
 #
-# Hva denne rollen gjor:
-#   - Verifiserer hostname matcher inventory_hostname
-#   - Setter NTP-synk (kritisk for AD: Kerberos krever <5 min skew)
-#   - Sletter eventuelle stranded sysprep-flag
-#   - Sjekker at nettverk er Private (ikke Public)
+# NTP-strategi for isolert AD-lab:
+#   - DC01:  Autoritativ tidskilde. Bruker Local CMOS hvis VMware Tools ikke
+#            kan sync med host, ellers host-sync via VMware Tools.
+#   - FS01:  Synker med domain hierarchy (DC01 automatisk).
 # =============================================================================
 
 - name: "Hent hostname fra Windows"
@@ -28,20 +23,47 @@
       Hostname mismatch!
       Windows sier: {{ actual_hostname.output[0] }}
       Inventory sier: {{ inventory_hostname }}
-      Sjekk at unattend.xml ble lest under specialize-pass.
 
 - name: "Sett tidssone til W. Europe Standard Time"
   ansible.windows.win_timezone:
     timezone: W. Europe Standard Time
 
-- name: "Konfigurer NTP-server (kritisk for AD/Kerberos)"
-  # Bruker time.cloudflare.com som er stabil og raskt fra Norge.
-  # Bytter til intern NTP nar AD er promotert.
+# -----------------------------------------------------------------------------
+# NTP-konfig avhengig av rolle
+# -----------------------------------------------------------------------------
+
+- name: "Sjekk om hosten er en domain controller"
+  ansible.builtin.set_fact:
+    is_dc: "{{ 'domain_controllers' in group_names }}"
+
+- name: "Konfigurer DC01 som autoritativ tidskilde"
+  # DC01 er roten av tidshierarkiet. I isolert lab er Local CMOS akseptabelt
+  # som tidsreferanse - alle andre VM-er synker med DC01 uansett.
+  # Hvis VMware Tools er installert + host-sync er aktivert, far DC01 ekte tid
+  # fra Workstation-hosten.
   ansible.windows.win_shell: |
-    w32tm /config /manualpeerlist:"time.cloudflare.com,0x9" /syncfromflags:manual /reliable:yes /update
-    Restart-Service w32time
-    w32tm /resync /force
-  changed_when: false  # idempotent — ingen detekterbar endring i state
+    # Sett DC01 som autoritativ - bruker Local CMOS som fallback
+    w32tm /config /manualpeerlist:"" /syncfromflags:NO /reliable:YES /update
+    Restart-Service w32time -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+    w32tm /resync /rediscover /nowait
+  when: is_dc
+  changed_when: false
+
+- name: "Konfigurer member servers til a synke med domain hierarchy"
+  # Member servers synker med DC01 automatisk via Kerberos-domenehierarki.
+  # Dette er Windows-default for domain-medlemmer.
+  ansible.windows.win_shell: |
+    w32tm /config /syncfromflags:domhier /update
+    Restart-Service w32time -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 3
+    w32tm /resync /rediscover /nowait
+  when: not is_dc
+  changed_when: false
+
+# -----------------------------------------------------------------------------
+# Resten av rollen som for
+# -----------------------------------------------------------------------------
 
 - name: "Sett nettverksprofil til Private (forutsetning for WinRM/AD)"
   ansible.windows.win_powershell:
@@ -58,7 +80,6 @@
   notify: reboot if needed
 
 - name: "Sett DNS suffix-search-list"
-  # Sorger for at korte navn (f.eks 'dc01' istedenfor 'dc01.corp.lab.local') resolver.
   ansible.windows.win_powershell:
     script: |
       Set-DnsClientGlobalSetting -SuffixSearchList @('{{ lab.domain.fqdn }}')
