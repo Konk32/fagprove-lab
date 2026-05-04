@@ -1,0 +1,432 @@
+---
+# =============================================================================
+# verify.yml - Full helsesjekk av lab-miljoet
+# =============================================================================
+# Run-all-and-report. Skriver rapport til /tmp/verify-report.txt og viser den.
+#
+# Kjor med:
+#   ansible-playbook -i inventory/hosts.yml playbooks/verify.yml
+# =============================================================================
+
+# =============================================================================
+# PLAY 1: Felles sjekker pa alle Windows-hosts
+# =============================================================================
+- name: "Verify - alle Windows-hosts"
+  hosts: windows
+  gather_facts: yes
+  vars_files:
+    - ../../config/lab.yml
+  vars:
+    lab:
+      domain: "{{ domain }}"
+      local_admin: "{{ local_admin }}"
+      network: "{{ network }}"
+      dhcp: "{{ dhcp }}"
+      organizational_units: "{{ organizational_units }}"
+      security_groups: "{{ security_groups }}"
+      users: "{{ users }}"
+      gpo: "{{ gpo }}"
+
+  tasks:
+    - name: "[verify] WinRM tilgjengelig"
+      ansible.builtin.set_fact:
+        check_winrm: { ok: true, msg: "WinRM-tilkobling fungerer" }
+
+    - name: "[verify] Hent hostname"
+      ansible.windows.win_powershell:
+        script: $env:COMPUTERNAME
+      register: r_hostname
+      ignore_errors: true
+
+    - name: "[verify] Sjekk hostname"
+      ansible.builtin.set_fact:
+        check_hostname:
+          ok: "{{ (r_hostname.output[0] | default('') | upper) == (inventory_hostname | upper) }}"
+          msg: "Forventet '{{ inventory_hostname | upper }}', fant '{{ r_hostname.output[0] | default('UKJENT') | upper }}'"
+
+    - name: "[verify] Sjekk Windows Time"
+      ansible.windows.win_shell: |
+        $status = w32tm /query /status 2>&1 | Out-String
+        $source = "UKJENT"
+        if ($status -match 'Source:\s*(.+)') {
+            $source = $matches[1].Trim()
+        }
+        $stratum = "?"
+        if ($status -match 'Stratum:\s*(\d+)') {
+            $stratum = $matches[1]
+        }
+        Write-Output "SOURCE=$source; STRATUM=$stratum"
+      register: r_clock
+      ignore_errors: true
+      changed_when: false
+
+    - name: "[verify] Klokke har gyldig kilde"
+      ansible.builtin.set_fact:
+        check_clock:
+          # I et isolert lab er DC01 autoritativ (Local CMOS er OK pa DC01)
+          ok: >-
+            {{ (not (r_clock.stdout | default('') is search('Local CMOS Clock')))
+               or (inventory_hostname | upper == 'DC01') }}
+          msg: "{{ r_clock.stdout | default('UKJENT') | trim }}"
+
+    - name: "[verify] Samle host-resultater"
+      ansible.builtin.set_fact:
+        host_checks:
+          - { name: "WinRM tilkobling",   result: "{{ check_winrm }}" }
+          - { name: "Hostname matcher",   result: "{{ check_hostname }}" }
+          - { name: "Tid-kilde gyldig",   result: "{{ check_clock }}" }
+
+# =============================================================================
+# PLAY 2: Domain Controller
+# =============================================================================
+- name: "Verify - Domain Controller"
+  hosts: domain_controllers
+  gather_facts: no
+  vars_files:
+    - ../../config/lab.yml
+  vars:
+    lab:
+      domain: "{{ domain }}"
+      local_admin: "{{ local_admin }}"
+      network: "{{ network }}"
+      dhcp: "{{ dhcp }}"
+      organizational_units: "{{ organizational_units }}"
+      security_groups: "{{ security_groups }}"
+      users: "{{ users }}"
+      gpo: "{{ gpo }}"
+
+  tasks:
+    - name: "[verify-dc] Beregn domain DN"
+      ansible.builtin.set_fact:
+        domain_dn: "DC={{ lab.domain.fqdn | replace('.', ',DC=') }}"
+
+    - name: "[verify-dc] Hent forest-info"
+      ansible.windows.win_powershell:
+        script: |
+          Import-Module ActiveDirectory
+          $forest = Get-ADForest
+          $Ansible.Result = @{
+              Name = $forest.Name
+              Mode = "$($forest.ForestMode)"
+          }
+      register: r_forest
+      ignore_errors: true
+
+    - name: "[verify-dc] Forest-navn matcher config"
+      ansible.builtin.set_fact:
+        check_forest:
+          ok: "{{ (r_forest.result.Name | default('')) == lab.domain.fqdn }}"
+          msg: "Forest: {{ r_forest.result.Name | default('FEIL') }} (forventet: {{ lab.domain.fqdn }})"
+
+    - name: "[verify-dc] Test DNS-resolusjon"
+      ansible.windows.win_shell: |
+        try {
+            $r = Resolve-DnsName -Name "{{ lab.domain.fqdn }}" -Type A -ErrorAction Stop
+            Write-Output "OK: $($r[0].IPAddress)"
+        } catch {
+            Write-Output "FAIL: $($_.Exception.Message)"
+        }
+      register: r_dns
+      ignore_errors: true
+      changed_when: false
+
+    - name: "[verify-dc] DNS resolver domene"
+      ansible.builtin.set_fact:
+        check_dns:
+          ok: "{{ (r_dns.stdout | default('')) is search('OK:') }}"
+          msg: "{{ r_dns.stdout | default('?') | trim }}"
+
+    - name: "[verify-dc] Sjekk AD-status"
+      ansible.windows.win_powershell:
+        script: |
+          $result = & dcdiag.exe /test:Replications 2>&1 | Out-String
+          if ($LASTEXITCODE -eq 0 -or $result -match 'passed test Replications') {
+              $Ansible.Result = "OK"
+          } elseif ($result -match 'No replication partners' -or $result -match 'has no neighbors') {
+              $Ansible.Result = "OK_SINGLE_DC"
+          } else {
+              $Ansible.Result = "FAIL"
+          }
+      register: r_repl
+      ignore_errors: true
+
+    - name: "[verify-dc] AD replication health"
+      ansible.builtin.set_fact:
+        check_repl:
+          ok: "{{ (r_repl.result | default('')) is search('OK') }}"
+          msg: "Status: {{ r_repl.result | default('?') }}"
+
+    - name: "[verify-dc] List OU-er"
+      ansible.windows.win_powershell:
+        script: |
+          Import-Module ActiveDirectory
+          $Ansible.Result = (Get-ADOrganizationalUnit -Filter * | Select-Object -ExpandProperty Name)
+      register: r_ous
+      ignore_errors: true
+
+    - name: "[verify-dc] Beregn manglende OU-er"
+      ansible.builtin.set_fact:
+        missing_ous: >-
+          {{ lab.organizational_units
+             | map(attribute='name')
+             | list
+             | difference(r_ous.result | default([]) | list) }}
+
+    - name: "[verify-dc] Alle OU-er finnes"
+      ansible.builtin.set_fact:
+        check_ous:
+          ok: "{{ missing_ous | length == 0 }}"
+          msg: >-
+            {% if missing_ous | length == 0 %}Alle {{ lab.organizational_units | length }} OU-er finnes
+            {% else %}Manglende: {{ missing_ous | join(', ') }}{% endif %}
+
+    - name: "[verify-dc] Hent alle AD-brukere"
+      ansible.windows.win_powershell:
+        script: |
+          Import-Module ActiveDirectory
+          $users = Get-ADUser -Filter * -Properties Enabled
+          $Ansible.Result = $users | ForEach-Object {
+              @{
+                  SamAccountName = $_.SamAccountName
+                  Enabled = $_.Enabled
+              }
+          }
+      register: r_users
+      ignore_errors: true
+
+    - name: "[verify-dc] Beregn manglende brukere"
+      ansible.builtin.set_fact:
+        users_missing: >-
+          {{ lab.users
+             | map(attribute='username')
+             | list
+             | difference(r_users.result | default([]) | map(attribute='SamAccountName') | list) }}
+
+    - name: "[verify-dc] Alle brukere finnes"
+      ansible.builtin.set_fact:
+        check_users:
+          ok: "{{ users_missing | length == 0 }}"
+          msg: >-
+            {% if users_missing | length == 0 %}Alle {{ lab.users | length }} brukere finnes
+            {% else %}Manglende: {{ users_missing | join(', ') }}{% endif %}
+
+    - name: "[verify-dc] List sikkerhetsgrupper"
+      ansible.windows.win_powershell:
+        script: |
+          Import-Module ActiveDirectory
+          $groups = Get-ADGroup -Filter * -SearchBase "OU=Grupper,{{ domain_dn }}" -ErrorAction SilentlyContinue
+          $Ansible.Result = ($groups | Select-Object -ExpandProperty Name)
+      register: r_groups
+      ignore_errors: true
+
+    - name: "[verify-dc] Beregn manglende grupper"
+      ansible.builtin.set_fact:
+        groups_missing: >-
+          {{ lab.security_groups
+             | map(attribute='name')
+             | list
+             | difference(r_groups.result | default([]) | list) }}
+
+    - name: "[verify-dc] Alle sikkerhetsgrupper finnes"
+      ansible.builtin.set_fact:
+        check_groups:
+          ok: "{{ groups_missing | length == 0 }}"
+          msg: >-
+            {% if groups_missing | length == 0 %}Alle {{ lab.security_groups | length }} grupper finnes
+            {% else %}Manglende: {{ groups_missing | join(', ') }}{% endif %}
+
+    - name: "[verify-dc] Hent DHCP-scope"
+      ansible.windows.win_powershell:
+        script: |
+          $scope = Get-DhcpServerv4Scope -ErrorAction SilentlyContinue | Where-Object { $_.Name -eq "{{ lab.dhcp.scope_name }}" }
+          if ($scope) {
+              $Ansible.Result = @{
+                  Found = $true
+                  State = "$($scope.State)"
+                  StartRange = "$($scope.StartRange)"
+                  EndRange = "$($scope.EndRange)"
+              }
+          } else {
+              $Ansible.Result = @{ Found = $false; State = ""; StartRange = ""; EndRange = "" }
+          }
+      register: r_dhcp
+      ignore_errors: true
+
+    - name: "[verify-dc] DHCP scope er Active og matcher"
+      ansible.builtin.set_fact:
+        check_dhcp:
+          ok: >-
+            {{ (r_dhcp.result.Found | default(false))
+               and ((r_dhcp.result.State | default('')) == 'Active')
+               and ((r_dhcp.result.StartRange | default('')) == lab.dhcp.start_range)
+               and ((r_dhcp.result.EndRange | default('')) == lab.dhcp.end_range) }}
+          msg: >-
+            Found={{ r_dhcp.result.Found | default(false) }}, State={{ r_dhcp.result.State | default('?') }},
+            Range={{ r_dhcp.result.StartRange | default('?') }}-{{ r_dhcp.result.EndRange | default('?') }}
+
+    - name: "[verify-dc] Hent passordpolicy"
+      ansible.windows.win_powershell:
+        script: |
+          Import-Module ActiveDirectory
+          $policy = Get-ADDefaultDomainPasswordPolicy
+          $Ansible.Result = @{
+              MinPasswordLength = $policy.MinPasswordLength
+              PasswordHistoryCount = $policy.PasswordHistoryCount
+              LockoutThreshold = $policy.LockoutThreshold
+          }
+      register: r_pwpolicy
+      ignore_errors: true
+
+    - name: "[verify-dc] Passordpolicy matcher config"
+      ansible.builtin.set_fact:
+        check_pwpolicy:
+          ok: >-
+            {{ ((r_pwpolicy.result.MinPasswordLength | default(0)) | int) == ((lab.gpo[0].settings.min_password_length) | int)
+               and ((r_pwpolicy.result.PasswordHistoryCount | default(0)) | int) == ((lab.gpo[0].settings.password_history) | int)
+               and ((r_pwpolicy.result.LockoutThreshold | default(-1)) | int) == ((lab.gpo[0].settings.lockout_threshold) | int) }}
+          msg: >-
+            MinLen={{ r_pwpolicy.result.MinPasswordLength | default('?') }}/{{ lab.gpo[0].settings.min_password_length }},
+            History={{ r_pwpolicy.result.PasswordHistoryCount | default('?') }}/{{ lab.gpo[0].settings.password_history }},
+            Lockout={{ r_pwpolicy.result.LockoutThreshold | default('?') }}/{{ lab.gpo[0].settings.lockout_threshold }}
+
+    - name: "[verify-dc] Samle resultater"
+      ansible.builtin.set_fact:
+        dc_checks:
+          - { name: "AD forest navn",        result: "{{ check_forest }}" }
+          - { name: "DNS resolver domene",   result: "{{ check_dns }}" }
+          - { name: "AD replication health", result: "{{ check_repl }}" }
+          - { name: "OU-struktur",           result: "{{ check_ous }}" }
+          - { name: "Brukere fra config",    result: "{{ check_users }}" }
+          - { name: "Sikkerhetsgrupper",     result: "{{ check_groups }}" }
+          - { name: "DHCP scope",            result: "{{ check_dhcp }}" }
+          - { name: "Passordpolicy",         result: "{{ check_pwpolicy }}" }
+
+# =============================================================================
+# PLAY 3: Member servers
+# =============================================================================
+- name: "Verify - Member servers"
+  hosts: member_servers
+  gather_facts: no
+  vars_files:
+    - ../../config/lab.yml
+  vars:
+    lab:
+      domain: "{{ domain }}"
+
+  tasks:
+    - name: "[verify-member] Hent domain-info"
+      ansible.windows.win_powershell:
+        script: |
+          $cs = Get-CimInstance Win32_ComputerSystem
+          $Ansible.Result = @{
+              Domain = $cs.Domain
+              PartOfDomain = $cs.PartOfDomain
+          }
+      register: r_member_domain
+      ignore_errors: true
+
+    - name: "[verify-member] Domain-joined"
+      ansible.builtin.set_fact:
+        check_member_domain:
+          ok: >-
+            {{ (r_member_domain.result.PartOfDomain | default(false))
+               and ((r_member_domain.result.Domain | default('')) == lab.domain.fqdn) }}
+          msg: "Domain={{ r_member_domain.result.Domain | default('?') }}, Joined={{ r_member_domain.result.PartOfDomain | default(false) }}"
+
+    - name: "[verify-member] Test DNS"
+      ansible.windows.win_shell: |
+        try {
+            $r = Resolve-DnsName -Name "{{ lab.domain.fqdn }}" -Type A -ErrorAction Stop
+            Write-Output "OK: $($r[0].IPAddress)"
+        } catch {
+            Write-Output "FAIL: $($_.Exception.Message)"
+        }
+      register: r_member_dns
+      ignore_errors: true
+      changed_when: false
+
+    - name: "[verify-member] DNS resolver domene"
+      ansible.builtin.set_fact:
+        check_member_dns:
+          ok: "{{ (r_member_dns.stdout | default('')) is search('OK:') }}"
+          msg: "{{ r_member_dns.stdout | default('?') | trim }}"
+
+    - name: "[verify-member] Test LDAP-port til DC"
+      ansible.windows.win_shell: |
+        try {
+            $dc = (Resolve-DnsName "{{ lab.domain.fqdn }}" -Type A -ErrorAction Stop)[0].IPAddress
+            $tcp = Test-NetConnection -ComputerName $dc -Port 389 -WarningAction SilentlyContinue
+            if ($tcp.TcpTestSucceeded) { Write-Output "OK" } else { Write-Output "FAIL" }
+        } catch {
+            Write-Output "FAIL_DNS"
+        }
+      register: r_member_ldap
+      ignore_errors: true
+      changed_when: false
+
+    - name: "[verify-member] LDAP-port"
+      ansible.builtin.set_fact:
+        check_member_ldap:
+          ok: "{{ (r_member_ldap.stdout | default('') | trim) == 'OK' }}"
+          msg: "LDAP 389/tcp: {{ r_member_ldap.stdout | default('?') | trim }}"
+
+    - name: "[verify-member] Samle resultater"
+      ansible.builtin.set_fact:
+        member_checks:
+          - { name: "Domain-joined",       result: "{{ check_member_domain }}" }
+          - { name: "DNS resolver domene", result: "{{ check_member_dns }}" }
+          - { name: "LDAP-port til DC",    result: "{{ check_member_ldap }}" }
+
+# =============================================================================
+# PLAY 4: Sluttrapport - skriv til fil og cat for ren output
+# =============================================================================
+- name: "Verify - Sluttrapport"
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: "Bygg samlet sjekk-liste"
+      ansible.builtin.set_fact:
+        all_checks: >-
+          {{ all_checks | default([])
+             + (hostvars[item].host_checks | default([]) | map('combine', {'host': item}) | list)
+             + (hostvars[item].dc_checks | default([]) | map('combine', {'host': item}) | list)
+             + (hostvars[item].member_checks | default([]) | map('combine', {'host': item}) | list) }}
+      loop: "{{ groups['windows'] }}"
+
+    - name: "Skriv rapport til fil"
+      ansible.builtin.copy:
+        dest: /tmp/verify-report.txt
+        content: |
+          ==================================================================
+                                VERIFY RESULT
+          ==================================================================
+          {% for host in groups['windows'] %}
+
+          === {{ host | upper }} ===
+          {% for check in all_checks if check.host == host %}
+          {{ '[ OK ]' if check.result.ok else '[FAIL]' }}  {{ '%-25s' | format(check.name) }}  {{ check.result.msg | trim }}
+          {% endfor %}
+          {% endfor %}
+
+          ==================================================================
+          {% set passed = all_checks | selectattr('result.ok', 'equalto', true) | list | length %}
+          {% set failed = all_checks | selectattr('result.ok', 'equalto', false) | list | length %}
+            Sjekker:  {{ all_checks | length }}
+            Passert:  {{ passed }}
+            Feilet:   {{ failed }}
+          ==================================================================
+      changed_when: false
+
+    - name: "Vis rapport"
+      ansible.builtin.command: cat /tmp/verify-report.txt
+      register: report_output
+      changed_when: false
+
+    - name: "Print rapport"
+      ansible.builtin.debug:
+        msg: "{{ report_output.stdout_lines }}"
+
+    - name: "Eksiter med feil hvis sjekker feilet"
+      ansible.builtin.fail:
+        msg: "{{ (all_checks | selectattr('result.ok', 'equalto', false) | list | length) }} sjekker feilet (se rapport over)"
+      when: (all_checks | selectattr('result.ok', 'equalto', false) | list | length) > 0
