@@ -112,7 +112,8 @@ source "vmware-iso" "win2022" {
   shutdown_timeout = "30m"
 
   # Tools-ISO mounting — Packer monterer windows.iso automatisk her hvis tools_upload_flavor er satt
-  tools_mode = "disable"
+  tools_mode        = "attach"
+  tools_source_path = "C:/Program Files (x86)/VMware/VMware Workstation/windows.iso"
 }
 
 # -----------------------------------------------------------------------------
@@ -121,6 +122,7 @@ source "vmware-iso" "win2022" {
 build {
   sources = ["source.vmware-iso.win2022"]
 
+  # Steg 1: Cleanup
   provisioner "powershell" {
     pause_before = "60s"
     inline = [
@@ -129,9 +131,15 @@ build {
     ]
   }
 
-  # Schedule sysprep til å kjøre 30 sekunder fra nå via Task Scheduler.
-  # Provisioneren returnerer umiddelbart, sysprep kjører LENGE etter
-  # at WinRM-tilkoblingen er ferdig brukt av Packer.
+  # Steg 2: Installer VMware Tools
+  provisioner "windows-shell" {
+  inline = [
+    "E:\\setup.exe /S /v\"/qn REBOOT=R\""
+  ]
+  valid_exit_codes = [0, 3010]
+}
+
+  # Steg 3: Schedule sysprep og la Packer styre shutdown
   provisioner "powershell" {
     inline = [
       "$action = New-ScheduledTaskAction -Execute 'C:\\Windows\\System32\\Sysprep\\sysprep.exe' -Argument '/generalize /oobe /quiet /shutdown'",
