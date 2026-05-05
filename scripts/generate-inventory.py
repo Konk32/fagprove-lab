@@ -60,9 +60,7 @@ def build_inventory(lab: dict) -> dict:
         "ansible_winrm_server_cert_validation": "ignore",
         "ansible_port":                     5985,
         "ansible_user":                     lab["local_admin"]["username"],
-        # NB: passordet hentes fra ansible-vault i produksjon.
-        # For lab-bruk hardkoder vi referansen til en variabel.
-        "ansible_password":                 "{{ vault_admin_password }}",
+        "ansible_password":                 "Lab123",
     }
 
     # Per host: fyll inn IP og legg i riktige grupper
