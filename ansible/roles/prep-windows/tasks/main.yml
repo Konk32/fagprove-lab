@@ -1,14 +1,4 @@
 ---
-# =============================================================================
-# roles/prep-windows/tasks/main.yml
-# =============================================================================
-# Forberedelse av Windows-host etter cloning. Kjorer mot ALLE Windows-hosts.
-#
-# NTP-strategi for isolert AD-lab:
-#   - DC01:  Autoritativ tidskilde. Bruker Local CMOS hvis VMware Tools ikke
-#            kan sync med host, ellers host-sync via VMware Tools.
-#   - FS01:  Synker med domain hierarchy (DC01 automatisk).
-# =============================================================================
 
 - name: "Hent hostname fra Windows"
   ansible.windows.win_powershell:
@@ -28,21 +18,12 @@
   ansible.windows.win_timezone:
     timezone: W. Europe Standard Time
 
-# -----------------------------------------------------------------------------
-# NTP-konfig avhengig av rolle
-# -----------------------------------------------------------------------------
-
 - name: "Sjekk om hosten er en domain controller"
   ansible.builtin.set_fact:
     is_dc: "{{ 'domain_controllers' in group_names }}"
 
 - name: "Konfigurer DC01 som autoritativ tidskilde"
-  # DC01 er roten av tidshierarkiet. I isolert lab er Local CMOS akseptabelt
-  # som tidsreferanse - alle andre VM-er synker med DC01 uansett.
-  # Hvis VMware Tools er installert + host-sync er aktivert, far DC01 ekte tid
-  # fra Workstation-hosten.
   ansible.windows.win_shell: |
-    # Sett DC01 som autoritativ - bruker Local CMOS som fallback
     w32tm /config /manualpeerlist:"" /syncfromflags:NO /reliable:YES /update
     Restart-Service w32time -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 3
@@ -51,8 +32,6 @@
   changed_when: false
 
 - name: "Konfigurer member servers til a synke med domain hierarchy"
-  # Member servers synker med DC01 automatisk via Kerberos-domenehierarki.
-  # Dette er Windows-default for domain-medlemmer.
   ansible.windows.win_shell: |
     w32tm /config /syncfromflags:domhier /update
     Restart-Service w32time -ErrorAction SilentlyContinue
@@ -60,10 +39,6 @@
     w32tm /resync /rediscover /nowait
   when: not is_dc
   changed_when: false
-
-# -----------------------------------------------------------------------------
-# Resten av rollen som for
-# -----------------------------------------------------------------------------
 
 - name: "Sett nettverksprofil til Private (forutsetning for WinRM/AD)"
   ansible.windows.win_powershell:

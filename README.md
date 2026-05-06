@@ -1,56 +1,73 @@
 # fagprove-lab
 
-Reproduserbart Windows Server-lab for fagprøveforberedelse. Én config-fil
-inn, ferdig oppsatt domene-miljø ut.
+Reproducible Windows Server lab environment for exam preparation.
 
-## Hva dette gjør
+## What this repository does
 
-Tar en YAML-fil med ønsket miljø (domene, servere, DHCP-scope, brukere)
-og bygger hele infrastrukturen i VMware Workstation Pro:
+Given one config file (`config/lab.yml`), the repository can:
 
-1. **Packer** bygger en gylden Windows Server 2022-image
-2. **vmrun** kloner basen til N servere/klienter
-3. **Ansible** konfigurerer AD, DHCP, GPO, OU-struktur og brukere
+1. Build a reusable Windows Server 2022 base image with Packer.
+2. Clone lab VMs from that base image in VMware Workstation.
+3. Configure the environment with Ansible (AD, DHCP, users, groups, and baseline policies).
 
-Total tid fra `build.ps1` til ferdig miljø: ~30 minutter
-(etter førstegangs Packer-build på ~60 min).
+## Deployment flow
 
-## Hvorfor
+This is the canonical flow used by this project:
 
-Fagprøvedemo er sårbar for menneskelige feil: VM-klokker som driver,
-sertifikater som mangler, hjemmeområder med ÆØÅ i pathen, kontoer
-opprettet inkonsistent mellom dokumentasjon og demo.
+1. Fill out `config/lab.yml`.
+2. Generate inventory from config.
+3. Build the Windows base image.
+4. Run the full Ansible deployment.
 
-Dette repoet gjør miljøet til kode. Riv det ned, bygg det opp på 30 min,
-samme resultat hver gang.
+Use the commands below from the repository root unless stated otherwise.
 
-## Forutsetninger
+### 1) Configure lab settings
 
-- Windows 10/11 host
-- VMware Workstation Pro 17+
-- Packer 1.10+ (`choco install packer`)
-- Ansible på WSL2 (Ubuntu/Fedora)
-- Windows Server 2022 ISO (Eval fra Microsoft)
-- Minimum 32 GB RAM på hosten for et realistisk lab
+Edit:
 
-## Kom i gang
+- `config/lab.yml`
+- `packer/variables.auto.pkrvars.hcl` (create from `.example` if missing)
 
-```powershell
-# 1. Klon
-git clone https://github.com/Konk32/fagprove-lab.git
-cd fagprove-lab
+### 2) Generate Ansible inventory
 
-# 2. Tilpass miljøet
-notepad config\lab.yml
-
-# 3. Bygg
-.\scripts\build.ps1
+```bash
+python scripts/generate-inventory.py
 ```
 
-## Status
+### 3) Build the Windows image and clone VMs
 
-Tidlig fase. Se `docs/ROADMAP.md` for hva som er på vei.
+```powershell
+.\scripts\build.ps1 -SkipAnsible
+```
 
-## Lisens
+### 4) Run Ansible
+
+Run from WSL (or another Linux environment with Ansible installed):
+
+```bash
+ansible-galaxy collection install -r ansible/requirements.yml
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/site.yml
+```
+
+### 5) Verify deployment
+
+```bash
+ansible-playbook -i ansible/inventory/hosts.yml ansible/playbooks/verify.yml
+```
+
+## Prerequisites
+
+- Windows host with VMware Workstation Pro
+- Packer
+- Python 3 with `PyYAML`
+- WSL2 (or Linux) with Ansible
+- Windows Server 2022 ISO
+
+## Notes
+
+- Network setup guidance is documented in `docs/network-setup.md`.
+- The all-in-one script `scripts/build.ps1` is useful for local iteration, but the documented flow above is the source of truth for publication.
+
+## License
 
 DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE

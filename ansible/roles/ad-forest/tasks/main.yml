@@ -1,17 +1,4 @@
 ---
-# =============================================================================
-# roles/ad-forest/tasks/main.yml
-# =============================================================================
-# Promoterer hosten til ny Active Directory-forest.
-# Skal KUN kjore mot DC01 (forste DC i forest).
-#
-# Stegene:
-#   1. Installer AD DS-rollen (Windows feature)
-#   2. Installer DNS-rollen
-#   3. Promoter til ny forest med spesifisert FQDN
-#   4. Reboot (nodvendig)
-#   5. Verifiser at AD-tjenester kjorer etter reboot
-# =============================================================================
 
 - name: "Installer AD DS-rolle"
   ansible.windows.win_feature:
@@ -30,8 +17,6 @@
   when: ad_install.reboot_required
 
 - name: "Promoter til ny AD-forest"
-  # microsoft.ad.domain er den moderne erstatningen for win_domain.
-  # Etter dette er hosten en domain controller.
   microsoft.ad.domain:
     dns_domain_name: "{{ lab.domain.fqdn }}"
     domain_netbios_name: "{{ lab.domain.netbios }}"
@@ -41,8 +26,6 @@
   register: dc_promo
 
 - name: "Vent til AD er ferdig oppe"
-  # microsoft.ad.domain handler reboot, men vi pauser litt ekstra
-  # slik at AD-tjenestene har tid pa seg a starte ferdig.
   ansible.builtin.pause:
     seconds: 30
 
@@ -72,7 +55,6 @@
     msg: "{{ forest_info.stdout_lines }}"
 
 - name: "Konfigurer DC til a synke tid med ekstern NTP"
-  # Forste DC i forest skal vaere autoritativ tidskilde for resten av domenet.
   ansible.windows.win_shell: |
     w32tm /config /computer:{{ inventory_hostname }} /manualpeerlist:"time.cloudflare.com,0x9" /syncfromflags:manual /reliable:yes /update
     Restart-Service w32time

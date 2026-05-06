@@ -1,10 +1,4 @@
 ---
-# =============================================================================
-# roles/domain-member/tasks/main.yml
-# =============================================================================
-# Joiner host i AD-domenet. Kjorer mot member_servers.
-# Forutsetning: DC01 er promotert og DNS-server peker pa DC01.
-# =============================================================================
 
 - name: "Sjekk at DC er naabar fra denne hosten"
   ansible.windows.win_shell: |

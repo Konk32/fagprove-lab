@@ -1,6 +1,6 @@
 # roles/
 
-Ansible-roller — bygges i Fase 4. Forventet struktur:
+Ansible roles used by this deployment. Current structure:
 
 ```
 roles/
@@ -15,5 +15,4 @@ roles/
 └── gpo-baseline/
 ```
 
-Hver rolle har et tydelig ansvar — det gjor det lett a teste isolert og a
-gjenbruke pa tvers av prosjekter.
+Each role has a narrow responsibility so it can be tested and reused independently.

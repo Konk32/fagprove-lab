@@ -1,41 +1,21 @@
-# =============================================================================
-# lab.yml — Sentral konfigurasjon for hele lab-miljoet
-# =============================================================================
-# Dette er den ene filen du tilpasser. Alt annet i repoet leser herfra.
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Domene
-# -----------------------------------------------------------------------------
+# Main lab configuration. Most deployment behavior is driven from this file.
 domain:
-  fqdn: corp.lab.local              # Full DNS-navn for domenet
-  netbios: CORPLAB                  # NetBIOS-navn (15 tegn maks, store bokstaver)
-  safe_mode_password: "DSRMPass123!"  # DSRM-passord — bytt FOR PRODUKSJON
+  fqdn: corp.lab.local
+  netbios: CORPLAB
+  safe_mode_password: "DSRMPass123!"
 
-# -----------------------------------------------------------------------------
-# Lokal admin-passord pa klonene
-# -----------------------------------------------------------------------------
-# Brukes av Ansible for forste tilkobling til hver klone via WinRM,
-# for AD er promotert. Ma matche passordet i base-imaget (Lab123).
+# Used for initial WinRM connection before domain promotion.
 local_admin:
   username: Administrator
   password: "Lab123"
 
-# -----------------------------------------------------------------------------
-# Nettverk
-# -----------------------------------------------------------------------------
-# LAN-segmentet er isolert — ingen DHCP, ingen internett.
-# Du ma opprette segmentet 'lab-fagprove' manuelt i Workstation.
-# Se docs/lan-segment-setup.md for instruksjoner.
+# Must match your VMware Workstation network setup.
 network:
   lan_segment: Vmnet2
   subnet: 10.50.0.0/24
   netmask: 255.255.255.0
-  gateway: 10.50.0.1                # IKKE i bruk enn — placeholder for ruter-VM
+  gateway: 10.50.0.1
 
-# -----------------------------------------------------------------------------
-# DHCP — installeres pa DC01 av Ansible
-# -----------------------------------------------------------------------------
 dhcp:
   scope_name: "Lab-Klienter"
   start_range: 10.50.0.100
@@ -43,11 +23,6 @@ dhcp:
   subnet_mask: 255.255.255.0
   lease_duration_hours: 8
 
-# -----------------------------------------------------------------------------
-# Servere
-# -----------------------------------------------------------------------------
-# Hver server far en VM klonet fra Packer-basen.
-# 'roles' bestemmer hvilke Ansible-roller som kjorer mot serveren.
 servers:
   - hostname: DC01
     ip: 10.50.0.10
@@ -65,9 +40,6 @@ servers:
       - domain-member
       - file-server
 
-# -----------------------------------------------------------------------------
-# Organisasjons-enheter (OU-er)
-# -----------------------------------------------------------------------------
 organizational_units:
   - name: Brukere
     children:
@@ -77,9 +49,6 @@ organizational_units:
   - name: Klienter
   - name: Grupper
 
-# -----------------------------------------------------------------------------
-# Sikkerhetsgrupper
-# -----------------------------------------------------------------------------
 security_groups:
   - name: g_fileshare_read
     ou: Grupper
@@ -88,9 +57,6 @@ security_groups:
     ou: Grupper
     scope: Global
 
-# -----------------------------------------------------------------------------
-# Brukere
-# -----------------------------------------------------------------------------
 users:
   - username: ola.nordmann
     given_name: Ola
@@ -110,12 +76,9 @@ users:
     groups:
       - g_fileshare_write
 
-# -----------------------------------------------------------------------------
-# Group Policy Objects (kommer i senere ansible-rolle)
-# -----------------------------------------------------------------------------
 gpo:
   - name: "Baseline-Passord-NSM"
-    target_ou: ""                   # Tomt = link til domain root
+    target_ou: ""
     settings:
       min_password_length: 14
       password_history: 24

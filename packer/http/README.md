@@ -1,15 +1,15 @@
 # http/
 
-Filer som mountes som virtuell floppy under Packer-builden.
+Files mounted as a virtual floppy during Packer build.
 
-Skal innholde i Fase 2:
+Contains:
 - `autounattend.xml` — Windows Setup answer-file
+- `winrmConfig.bat` — initial WinRM bootstrap for first boot
 
-Vi bygger denne i neste steg. Den kommer til a:
-- Sette computer name til `packer-build` (renames senere ved cloning)
-- Sette administrator-passord
-- Aktivere autologin slik at provisioning-scripts kan kjøre
-- Sette locale til en-US (vi gjor norsk-locale via GPO senere)
-- Sette tidssone til W. Europe Standard Time
-- Aktivere WinRM med self-signed cert
-- Apne brannmur for port 5985 og 5986
+Expected behavior from unattend/bootstrap:
+- Set temporary computer name
+- Set Administrator password
+- Enable first-boot automation for provisioning
+- Configure locale and timezone
+- Enable WinRM
+- Open required WinRM firewall ports

@@ -1,24 +1,12 @@
 ---
-# =============================================================================
-# site.yml — Hovedplaybook for fagprove-lab
-# =============================================================================
-# Kjor med:
-#   ansible-playbook -i inventory/hosts.yml playbooks/site.yml
+# Main deployment playbook.
+# Run with:
+# ansible-playbook -i inventory/hosts.yml playbooks/site.yml
 #
-# Forutsetninger:
-#   - VM-er klonet via scripts/clone-vms.ps1
-#   - WinRM tilgjengelig pa hver host
-#   - inventory/hosts.yml generert av generate-inventory.py
-# =============================================================================
+# config/lab.yml is loaded with vars_files per play because group_vars can be
+# ignored on NTFS-mounted paths in WSL due to Ansible security checks.
 
-# Trick for a laste lab.yml som "lab"-variabel siden group_vars-mappa
-# ignoreres av Ansible nar repoet ligger pa NTFS (world-writable).
-# vars_files er play-niva og lastes ALLTID, uavhengig av cfg-warnings.
-
-# -----------------------------------------------------------------------------
-# Play 1: Felles forberedelse
-# -----------------------------------------------------------------------------
-- name: "Forberedelse — alle Windows-servere"
+- name: "Preparation - all Windows servers"
   hosts: windows
   gather_facts: yes
   vars_files:
@@ -39,10 +27,7 @@
   roles:
     - prep-windows
 
-# -----------------------------------------------------------------------------
-# Play 2: Promoter forste DC
-# -----------------------------------------------------------------------------
-- name: "Bygg AD-forest pa DC01"
+- name: "Create AD forest on first domain controller"
   hosts: domain_controllers
   gather_facts: yes
   vars_files:
@@ -63,9 +48,6 @@
   roles:
     - ad-forest
 
-# -----------------------------------------------------------------------------
-# Play 3: Member servers joiner domenet
-# -----------------------------------------------------------------------------
 - name: "Domain-join member servers"
   hosts: member_servers
   gather_facts: no
@@ -81,10 +63,7 @@
   roles:
     - domain-member
 
-# -----------------------------------------------------------------------------
-# Play 4: AD-objekter og DHCP (kjorer pa DC01 etter promovering)
-# -----------------------------------------------------------------------------
-- name: "AD-objekter og DHCP"
+- name: "AD objects and DHCP"
   hosts: domain_controllers
   gather_facts: no
   vars_files:

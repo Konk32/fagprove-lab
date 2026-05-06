@@ -1,76 +1,41 @@
 # VMware Workstation Network Setup
 
-## Hvorfor manuelt?
+## Why this is manual
 
-VMware Workstation Pro har ingen offisiell PowerCLI-stotte og ingen Ansible-modul
-for nettverkskonfigurasjon. Vi konfigurerer derfor LAN-segmentet en gang manuelt
-og dokumenterer det her. Workstation lar oss eksportere konfigurasjonen til en
-fil som kan committes — det gir oss reproduserbarhet.
+VMware Workstation does not provide a reliable infrastructure-as-code interface
+for LAN segment creation. Configure the segment once, then keep the project
+config (`config/lab.yml`) aligned with your Workstation setup.
 
-## Hva er et LAN Segment?
+## Recommended setup
 
-I Workstation Pro er LAN Segments isolerte private nettverk. Tenk pa det som en
-virtuell switch som bare lab-VM-ene dine henger pa. Det er INGEN DHCP-server pa
-segmentet, og det er INGEN forbindelse ut til internett. Det er et tilsiktet
-designvalg — vi vil at vart eget DC01 skal vare DHCP-server, og vi vil ha kontroll
-pa hva som ngr ut.
+Create one isolated LAN segment for all lab VMs:
 
-For internett-tilgang i lab-en (for Windows Updates osv.) gir man typisk en
-ruter-VM (pfSense, OPNsense, eller en Linux-VM) to nettverkskort:
-- Et pa NAT (gir internett)
-- Et pa LAN-segmentet (gir tjenester til lab-en)
+1. Open VMware Workstation.
+2. Go to `Edit -> Virtual Network Editor`.
+3. Create a dedicated segment/network (for example `lab-fagprove` or `VMnet2`).
+4. Disable built-in DHCP on that segment.
+5. Ensure all cloned lab VMs connect to this same segment.
 
-## Manuelt oppsett — gjor en gang
-
-1. Apne VMware Workstation Pro
-2. Edit -> Virtual Network Editor (krever admin)
-3. Klikk **LAN Segments...**
-4. Klikk **Add**, navngi det `lab-fagprove`
-5. OK, lukk
-6. Eksporter hele network-konfig: **Export...** -> lagre som `vmnet-config.export`
-7. Commit `vmnet-config.export` til repoet (under `config/`)
-
-## Reimport pa ny maskin
-
-1. Edit -> Virtual Network Editor -> Import...
-2. Velg `vmnet-config.export`
-3. Workstation rebuilder alle vmnet-adaptere
-
-## Subnett-tildeling
-
-I `config/lab.yml`:
+Use matching values in `config/lab.yml`:
 
 ```yaml
 network:
-  lan_segment: lab-fagprove
+  lan_segment: VMnet2
   subnet: 10.50.0.0/24
-  gateway: 10.50.0.1   # ruter-VM hvis du har en
+  gateway: 10.50.0.1
 ```
 
-Statiske IP-er settes per server via Ansible (se `ansible/roles/network-config`
-nar den blir bygget i Fase 4).
+## Validate
 
-## Verifikasjon
-
-Etter Packer + clone-fasen, sjekk at en VM faktisk er pa segmentet:
+After cloning, verify network adapters from the host:
 
 ```powershell
 vmrun list
-vmrun listNetworkAdapters "path\to\DC01.vmx"
+vmrun listNetworkAdapters "<path-to-vm.vmx>"
 ```
 
-Adapter skal vise `lansegment: lab-fagprove`.
+## Troubleshooting
 
-## Vanlige problemer
-
-**"Nettverket er der men VM-ene ser ikke hverandre"**
-LAN Segments tillater bare trafikk *innenfor* segmentet. Sjekk at alle VM-ene
-har samme segment-navn og at de er i samme subnett.
-
-**"Internett funker ikke"**
-Forventet — LAN Segments har INGEN ruting ut. Du trenger en ruter-VM eller
-midlertidig bytte til NAT for opdateringer.
-
-**"DHCP funker ikke"**
-LAN Segments har ingen innebygd DHCP. Det er DC01 som skal levere det. Forste
-boot trenger statisk IP for det.
+- VMs cannot reach each other: confirm identical segment and subnet on all VMs.
+- No internet access: expected on isolated segments unless a router VM is added.
+- DHCP issues: expected if no DHCP role has been configured yet in the lab.

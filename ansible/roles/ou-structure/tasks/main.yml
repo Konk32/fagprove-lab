@@ -1,14 +1,6 @@
 ---
-# =============================================================================
-# roles/ou-structure/tasks/main.yml
-# =============================================================================
-# Oppretter OU-struktur i AD basert pa lab.yml.
-# Stotter nestede OU-er via 'children'-listen.
-# Kjorer mot DC01.
-# =============================================================================
 
 - name: "Beregn domain DN fra FQDN"
-  # Konverterer "corp.lab.local" til "DC=corp,DC=lab,DC=local"
   ansible.builtin.set_fact:
     domain_dn: "DC={{ lab.domain.fqdn | replace('.', ',DC=') }}"
 

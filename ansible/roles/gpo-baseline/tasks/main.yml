@@ -1,13 +1,4 @@
 ---
-# =============================================================================
-# roles/gpo-baseline/tasks/main.yml
-# =============================================================================
-# Oppretter GPO-er fra lab.yml. Bruker PowerShell direkte fordi
-# microsoft.ad-collection ikke har GPO-modul.
-#
-# Default Domain Policy redigeres for grunnleggende passordpolicy
-# fordi den er linket til domain-root og pavirker alle brukere.
-# =============================================================================
 
 - name: "Konfigurer passordpolicy via Default Domain Policy"
   ansible.windows.win_shell: |
@@ -17,7 +8,6 @@
     $lockout    = {{ lab.gpo[0].settings.lockout_threshold }}
     $lockMin    = {{ lab.gpo[0].settings.lockout_duration_minutes }}
 
-    # Bruker net accounts som er enkleste mate a sette domain-passord-policy
     net accounts /minpwlen:$minLen
     net accounts /uniquepw:$history
     net accounts /maxpwage:$maxAge

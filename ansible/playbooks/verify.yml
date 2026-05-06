@@ -1,16 +1,4 @@
 ---
-# =============================================================================
-# verify.yml - Full helsesjekk av lab-miljoet
-# =============================================================================
-# Run-all-and-report. Skriver rapport til /tmp/verify-report.txt og viser den.
-#
-# Kjor med:
-#   ansible-playbook -i inventory/hosts.yml playbooks/verify.yml
-# =============================================================================
-
-# =============================================================================
-# PLAY 1: Felles sjekker pa alle Windows-hosts
-# =============================================================================
 - name: "Verify - alle Windows-hosts"
   hosts: windows
   gather_facts: yes
@@ -63,7 +51,6 @@
     - name: "[verify] Klokke har gyldig kilde"
       ansible.builtin.set_fact:
         check_clock:
-          # I et isolert lab er DC01 autoritativ (Local CMOS er OK pa DC01)
           ok: >-
             {{ (not (r_clock.stdout | default('') is search('Local CMOS Clock')))
                or (inventory_hostname | upper == 'DC01') }}
@@ -76,9 +63,6 @@
           - { name: "Hostname matcher",   result: "{{ check_hostname }}" }
           - { name: "Tid-kilde gyldig",   result: "{{ check_clock }}" }
 
-# =============================================================================
-# PLAY 2: Domain Controller
-# =============================================================================
 - name: "Verify - Domain Controller"
   hosts: domain_controllers
   gather_facts: no
@@ -301,9 +285,6 @@
           - { name: "DHCP scope",            result: "{{ check_dhcp }}" }
           - { name: "Passordpolicy",         result: "{{ check_pwpolicy }}" }
 
-# =============================================================================
-# PLAY 3: Member servers
-# =============================================================================
 - name: "Verify - Member servers"
   hosts: member_servers
   gather_facts: no
@@ -377,9 +358,6 @@
           - { name: "DNS resolver domene", result: "{{ check_member_dns }}" }
           - { name: "LDAP-port til DC",    result: "{{ check_member_ldap }}" }
 
-# =============================================================================
-# PLAY 4: Sluttrapport - skriv til fil og cat for ren output
-# =============================================================================
 - name: "Verify - Sluttrapport"
   hosts: localhost
   gather_facts: no
